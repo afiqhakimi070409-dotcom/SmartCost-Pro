@@ -1,0 +1,8 @@
+{
+  "name": "Remix SmartCost Pro 2026",
+  "description": "Track standard costs, actuals, and variances with break-even analysis and professional PDF statements for any business.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

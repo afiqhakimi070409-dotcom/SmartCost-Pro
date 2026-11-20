@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Helper Primitives
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Verified Developer: Only verified developer emails or server/console-managed /developers records
+    function isDeveloper() {
+      return isSignedIn() && (
+        (request.auth.token.email in ['afiqhakimi070409@gmail.com']) ||
+        exists(/databases/$(database)/documents/developers/$(request.auth.uid))
+      );
+    }
+
+    // Entity Validation Helpers
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['id', 'username', 'fullName', 'role', 'companyName']) &&
+        data.keys().hasOnly(['id', 'username', 'fullName', 'email', 'role', 'companyName', 'dbKey', 'createdAt']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.username is string && data.username.size() > 0 && data.username.size() <= 64 &&
+        data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 100 &&
+        data.role in ['admin', 'developer', 'kerani', 'pengurus', 'penyelia', 'staf', 'auditor'] &&
+        data.companyName is string && data.companyName.size() > 0 && data.companyName.size() <= 128 &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 128)) &&
+        (!('dbKey' in data) || (data.dbKey is string && data.dbKey.size() <= 128)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64));
+    }
+
+    function isValidCompanyDatabase(data) {
+      return data.keys().hasAll(['id', 'companyName', 'ownerId', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'dbKey', 'companyName', 'ownerId', 'updatedAt', 'activeProductId', 'config', 'templates', 'version', 'savedAt', 'bahanMentah', 'buruhLangsung', 'overheadBerubah', 'overheadTetap', 'isDevSandbox']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        (!('dbKey' in data) || (data.dbKey is string && data.dbKey.size() > 0 && data.dbKey.size() <= 128)) &&
+        data.companyName is string && data.companyName.size() > 0 && data.companyName.size() <= 128 &&
+        data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() <= 128 &&
+        data.updatedAt is string && data.updatedAt.size() <= 64 &&
+        (!('activeProductId' in data) || (data.activeProductId is string && data.activeProductId.size() <= 128)) &&
+        (!('version' in data) || (data.version is string && data.version.size() <= 32)) &&
+        (!('savedAt' in data) || (data.savedAt is string && data.savedAt.size() <= 64)) &&
+        (!('config' in data) || (
+          data.config is map &&
+          !('passwordHash' in data.config) &&
+          !('password' in data.config) &&
+          !('salt' in data.config) &&
+          (!('kataLaluanLogMasuk' in data.config) || data.config.kataLaluanLogMasuk == '')
+        )) &&
+        (!('templates' in data) || (data.templates is list && data.templates.size() <= 500)) &&
+        (!('bahanMentah' in data) || (data.bahanMentah is list && data.bahanMentah.size() <= 1000)) &&
+        (!('buruhLangsung' in data) || (data.buruhLangsung is list && data.buruhLangsung.size() <= 500)) &&
+        (!('overheadBerubah' in data) || (data.overheadBerubah is list && data.overheadBerubah.size() <= 500)) &&
+        (!('overheadTetap' in data) || (data.overheadTetap is list && data.overheadTetap.size() <= 500)) &&
+        (!('isDevSandbox' in data) || (data.isDevSandbox is bool));
+    }
+
+    // 2. Safe Public Connectivity Test Endpoint (Read-Only)
+    match /test/{docId} {
+      allow get: if true;
+      allow write: if false;
+    }
+
+    // Admin & Developer registries are server/console-managed only
+    match /admins/{adminId} {
+      allow read, write: if false;
+    }
+
+    match /developers/{developerId} {
+      allow read, write: if false;
+    }
+
+    // 3. Users Collection - Strictly Owner-Only or Verified Developer (No Cross-Company Listing for Admins)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isDeveloper());
+      allow list: if isDeveloper();
+      // On user creation, self-assigned elevated roles are blocked: only lowest role ('staf') unless verified developer
+      allow create: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isDeveloper()) &&
+        isValidUserProfile(incoming()) && incoming().id == request.auth.uid &&
+        (incoming().role == 'staf' || isDeveloper());
+      // On user update, role cannot be self-elevated unless caller is verified developer and id remains immutable
+      allow update: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isDeveloper()) &&
+        isValidUserProfile(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['username', 'fullName', 'email', 'role', 'companyName', 'dbKey']) &&
+        incoming().id == existing().id &&
+        (incoming().role == existing().role || isDeveloper());
+      allow delete: if isValidId(userId) && isDeveloper();
+    }
+
+    // 4. Companies Database Collection - Strict Single-Company Owner Isolation & Developer-Only Directory/Delete
+    match /companies/{companyId} {
+      // Non-developers can ONLY read their own company document; ONLY verified developer can read across companies
+      allow get: if isSignedIn() && isValidId(companyId) &&
+        (resource.data.ownerId == request.auth.uid || isDeveloper());
+      // Query enforcement: Non-developers can ONLY list their own company; ONLY verified developer can list directory
+      allow list: if isSignedIn() &&
+        (resource.data.ownerId == request.auth.uid || isDeveloper());
+      // On create, ownerId must match requesting user UID
+      allow create: if isSignedIn() && isValidId(companyId) &&
+        isValidCompanyDatabase(incoming()) && incoming().ownerId == request.auth.uid;
+      // On update, ownerId and id remain immutable and caller must own the company or be verified developer
+      allow update: if isSignedIn() && isValidId(companyId) &&
+        isValidCompanyDatabase(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['dbKey', 'companyName', 'updatedAt', 'activeProductId', 'config', 'templates', 'version', 'savedAt', 'bahanMentah', 'buruhLangsung', 'overheadBerubah', 'overheadTetap', 'isDevSandbox']) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        (existing().ownerId == request.auth.uid || isDeveloper());
+      // ONLY verified developers may delete company databases in Firestore
+      allow delete: if isValidId(companyId) && isDeveloper();
+    }
+  }
+}

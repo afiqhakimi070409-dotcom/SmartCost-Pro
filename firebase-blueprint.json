@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile stored in SmartCost Pro",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 64 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["admin", "developer", "kerani", "pengurus", "penyelia", "staf", "auditor"] },
+        "companyName": { "type": "string", "maxLength": 128 },
+        "dbKey": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "username", "fullName", "role", "companyName"]
+    },
+    "CompanyDatabase": {
+      "title": "CompanyDatabase",
+      "description": "Isolated company business records, costing config, and products",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "dbKey": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 128 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string" },
+        "activeProductId": { "type": "string", "maxLength": 128 },
+        "config": { "type": "object" },
+        "templates": { "type": "array" },
+        "bahanMentah": { "type": "array" },
+        "buruhLangsung": { "type": "array" },
+        "overheadBerubah": { "type": "array" },
+        "overheadTetap": { "type": "array" },
+        "version": { "type": "string", "maxLength": 32 },
+        "savedAt": { "type": "string" },
+        "isDevSandbox": { "type": "boolean" }
+      },
+      "required": ["id", "companyName", "ownerId", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User account profiles"
+    },
+    "/companies/{companyId}": {
+      "schema": "CompanyDatabase",
+      "description": "Company costing and financial records"
+    }
+  }
+}

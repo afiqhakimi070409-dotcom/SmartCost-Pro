@@ -1,0 +1,26 @@
+# SmartCost Zero-Cost Cloud Infrastructure Configuration (RM0.00 / month)
+# - Frontend SPA Hosting: Cloudflare Pages Free (dist/)
+# - Edge API Gateway & Routing: Cloudflare Workers Free (100,000 req/day, 10ms CPU/req)
+# - Zero Paid Features Enabled (No Durable Objects, No Paid Queues, No Paid Load Balancer)
+
+name = "smartcost-zero-cost-gateway"
+main = "workers/smartcost-edge-worker.ts"
+compatibility_date = "2026-01-01"
+workers_dev = true
+
+# Cloudflare Pages Build Settings (Dashboard -> Workers & Pages -> Create -> Pages):
+# - Build command: npm run build
+# - Build output directory: dist
+# - Optional Build env var (when Pages *.pages.dev calls Worker *.workers.dev):
+#   VITE_API_BASE_URL = "https://smartcost-zero-cost-gateway.<subdomain>.workers.dev"
+
+[vars]
+APP_COST_TIER = "RM0.00-Free-Tier"
+FIRESTORE_PROJECT_ID = "reflecting-booth-740ks"
+FIRESTORE_DATABASE_ID = "ai-studio-remixsmartcostpr-940297e1-af61-42e5-8469-9bca8d60c481"
+# Optional comma-separated custom frontend origins allowed by CORS (besides *.pages.dev):
+# ALLOWED_ORIGINS = "https://smartcost.yourdomain.com"
+
+# Encrypted Secrets (NEVER commit real values — set via Cloudflare Dashboard or `npx wrangler secret put`):
+# - ORIGIN_API_URL : URL of your Express origin server (e.g. https://your-origin-host.example.com)
+# - GEMINI_API_KEY : Set on Express origin environment / secret manager (never exposed to browser)

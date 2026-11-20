@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SMARTCOST</title>
+    <meta name="description" content="Track standard costs, actuals, and variances with break-even analysis and professional PDF statements for any business." />
+    <meta property="og:title" content="SMARTCOST" />
+    <meta property="og:description" content="Track standard costs, actuals, and variances with break-even analysis and professional PDF statements for any business." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      // Prevent WebSocket closure errors from becoming unhandled promise rejections
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason;
+        var msg = reason && (reason.message || String(reason));
+        if (msg && (msg.includes('WebSocket') || msg.includes('websocket'))) {
+          event.preventDefault();
+        }
+      });
+    </script>
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-600 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

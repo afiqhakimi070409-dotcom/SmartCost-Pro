@@ -1,0 +1,13 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+# Never push runtime database snapshots, user credentials, or backups to GitHub
+data/
+*.backup.json
+.wrangler/
+
