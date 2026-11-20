@@ -3036,7 +3036,7 @@ export default function SettingsSheet({
         </h3>
         <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs divide-y divide-slate-100 dark:divide-slate-800/80">
           <a
-            href="https://smartcostweb.smartcost.workers.dev"
+            href="https://smartcostwebsites.smartcost.workers.dev"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-blue-950/40 transition-colors text-left cursor-pointer group"
@@ -3050,7 +3050,7 @@ export default function SettingsSheet({
                   {t.settings.items?.aboutUs || "About Us"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  {t.settings.items?.aboutUsDesc || "Lawati laman web rasmi SmartCost (smartcostweb.smartcost.workers.dev)"}
+                  {t.settings.items?.aboutUsDesc || "Lawati laman web rasmi SmartCost (smartcostwebsites.smartcost.workers.dev)"}
                 </span>
               </div>
             </div>
