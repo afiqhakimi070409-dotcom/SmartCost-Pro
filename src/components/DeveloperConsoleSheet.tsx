@@ -53,7 +53,7 @@ import { getAuthFetchHeaders, saveServerSessionToken } from "../utils/authSessio
 import { deleteCompanyFromFirestore } from "../utils/firestoreSync";
 import DeveloperAuthModal from "./DeveloperAuthModal";
 import ServerDatabaseManagement from "./ServerDatabaseManagement";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 import { validateAndReadJsonFile } from "../utils/fileUploadSecurity";
 
 interface DeveloperConsoleSheetProps {
@@ -254,7 +254,7 @@ export default function DeveloperConsoleSheet({
     if (isRealDeveloperSuperuser) {
       try {
         const headers = await getAuthFetchHeaders();
-        const resp = await fetch(apiUrl("/api/databases/list"), { credentials: "same-origin", headers });
+        const resp = await fetch(apiUrl("/api/databases/list"), { credentials: getFetchCredentialsMode(), headers });
         if (resp.ok) {
           const data = await resp.json().catch(() => null);
           const deletedSet = new Set<string>(
@@ -378,7 +378,7 @@ export default function DeveloperConsoleSheet({
         .then((headers) =>
           fetch(apiUrl("/api/databases/register"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({ databaseId: renameTargetDb.dbKey, companyName: newName }),
           })
@@ -470,7 +470,7 @@ export default function DeveloperConsoleSheet({
       const delHeaders = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const delResp = await fetch(apiUrl("/api/auth/delete-company-db"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: delHeaders,
         body: JSON.stringify({
           dbKey: target.dbKey,
@@ -684,7 +684,7 @@ export default function DeveloperConsoleSheet({
     try {
       const auditHeaders = await getAuthFetchHeaders();
       const res = await fetch(apiUrl(`/api/admin/backup/audit-log${activeLoadedDbKey ? `?databaseId=${encodeURIComponent(activeLoadedDbKey)}` : ""}`), {
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: auditHeaders,
       });
       if (res.ok) {
@@ -825,7 +825,7 @@ export default function DeveloperConsoleSheet({
       const exportHeaders = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const response = await fetch(apiUrl("/api/admin/backup/export"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: exportHeaders,
         body: JSON.stringify({
           databaseId: activeLoadedDbKey,
@@ -924,7 +924,7 @@ export default function DeveloperConsoleSheet({
       const valHeaders = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const res = await fetch(apiUrl("/api/admin/backup/validate"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: valHeaders,
         body: JSON.stringify({
           databaseId: activeLoadedDbKey,
@@ -987,7 +987,7 @@ export default function DeveloperConsoleSheet({
         const impHeaders = await getAuthFetchHeaders({ "Content-Type": "application/json" });
         await fetch(apiUrl("/api/admin/backup/import"), {
           method: "POST",
-          credentials: "same-origin",
+          credentials: getFetchCredentialsMode(),
           headers: impHeaders,
           body: JSON.stringify({
             databaseId: activeLoadedDbKey,

@@ -7,7 +7,7 @@ import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { handleFirestoreError, OperationType } from "./firestoreErrors";
 import { getAuthFetchHeaders } from "./authSessionClient";
-import { apiUrl } from "./apiBase";
+import { apiUrl, getFetchCredentialsMode } from "./apiBase";
 
 let pendingReads = 0;
 let pendingWrites = 0;
@@ -29,7 +29,7 @@ function reportObservedFirestoreOp(reads: number, writes: number): void {
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       await fetch(apiUrl("/api/telemetry/firestore-ops"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ readsDelta: r, writesDelta: w }),
       });

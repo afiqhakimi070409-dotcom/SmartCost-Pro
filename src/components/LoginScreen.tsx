@@ -24,7 +24,8 @@ import { formatCurrencyRM } from "../utils/costCalculations";
 import { saveServerSessionToken } from "../utils/authSessionClient";
 import { isDeveloperShortcutEvent } from "../utils/devShortcut";
 import DeveloperAuthModal from "./DeveloperAuthModal";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode, isEdgeStandaloneResponse } from "../utils/apiBase";
+import { edgeBootstrapAdmin, edgeLoginManual, edgeRegisterManual } from "../utils/edgeLocalAuth";
 
 export interface LoginUserPayload {
   id?: string;
@@ -157,8 +158,31 @@ export default function LoginScreen({
     }
   };
 
+  const mintEdgeSessionForVerifiedUser = async (verifiedUser: any) => {
+    try {
+      const edgeResp = await fetch(apiUrl("/api/auth/edge-session"), {
+        method: "POST",
+        credentials: getFetchCredentialsMode(),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: verifiedUser.id,
+          username: verifiedUser.username,
+          fullName: verifiedUser.fullName,
+          role: verifiedUser.role,
+          companyName: verifiedUser.companyName,
+          dbKey: verifiedUser.dbKey,
+          email: verifiedUser.email,
+        }),
+      });
+      const edgeData = await edgeResp.json().catch(() => ({}));
+      if (edgeResp.ok && edgeData.sessionToken) {
+        saveServerSessionToken(edgeData.sessionToken, edgeData.csrfToken);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
-    fetch(apiUrl("/api/config/features"), { credentials: "same-origin" })
+    fetch(apiUrl("/api/config/features"), { credentials: getFetchCredentialsMode() })
       .then((r) => (r.ok ? r.json() : null))
       .then((cfg) => {
         if (cfg) {
@@ -230,7 +254,7 @@ export default function LoginScreen({
             const idToken = await redirectUser.getIdToken();
             const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
               method: "POST",
-              credentials: "same-origin",
+              credentials: getFetchCredentialsMode(),
               headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${idToken}`,
@@ -312,7 +336,7 @@ export default function LoginScreen({
       // 1. Authoritative Server Manual Login (supports Username OR Optional Email directly on server)
       const resp = await fetch(apiUrl("/api/auth/login-manual"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: rawUser,
@@ -323,10 +347,28 @@ export default function LoginScreen({
         }),
       });
 
-      const data = await resp.json().catch(() => ({}));
+      let data = await resp.json().catch(() => ({}));
+      let resolvedStatus = resp.status;
+      let resolvedOk = resp.ok;
+
+      // Cloudflare Standalone Edge Mode (when no external Express origin is attached)
+      if (isEdgeStandaloneResponse(resp.status, data)) {
+        const edgeRes = await edgeLoginManual({
+          username: rawUser,
+          email: rawEmail,
+          password,
+          requestedRole: loginRole,
+        });
+        resolvedStatus = edgeRes.status;
+        resolvedOk = edgeRes.success;
+        data = edgeRes;
+        if (edgeRes.success && edgeRes.user) {
+          await mintEdgeSessionForVerifiedUser(edgeRes.user);
+        }
+      }
 
       if (
-        resp.status === 401 &&
+        resolvedStatus === 401 &&
         (data?.code === "TWO_FACTOR_REQUIRED" || data?.code === "INVALID_TWO_FACTOR_CODE")
       ) {
         setRequires2FA(true);
@@ -339,7 +381,7 @@ export default function LoginScreen({
         return;
       }
 
-      if (resp.ok && data.success && data.user) {
+      if (resolvedOk && data.success && data.user) {
         saveServerSessionToken(data.sessionToken, data.csrfToken);
         const verifiedUser = data.user;
         const compName = verifiedUser.companyName || namaSyarikat || (lang === "en" ? "SCHOOL ENTERPRISE" : "PERNIAGAAN BAHARU");
@@ -363,7 +405,7 @@ export default function LoginScreen({
       }
 
       // If default Admin account has not been activated yet, show clean inline activation flow
-      if (resp.status === 409 && data.code === "ADMIN_SETUP_REQUIRED") {
+      if (resolvedStatus === 409 && data.code === "ADMIN_SETUP_REQUIRED") {
         setAdminBootstrapOpen(true);
         setError(
           data.error ||
@@ -375,27 +417,26 @@ export default function LoginScreen({
       }
 
       // Rate-limited
-      if (resp.status === 429 || data.code === "LOCKED") {
+      if (resolvedStatus === 429 || data.code === "LOCKED") {
         setError(data.error || (lang === "en" ? "Too many login attempts. Please try again shortly." : "Terlalu banyak percubaan log masuk. Sila cuba lagi sebentar."));
         return;
       }
 
       // Role mismatch, disabled account, or developer Alt+D isolation (never mask as wrong password)
       if (
-        resp.status === 403 &&
+        resolvedStatus === 403 &&
         (data.code === "ROLE_MISMATCH" || data.code === "ACCOUNT_DISABLED" || data.code === "DEVELOPER_USE_ALT_D")
       ) {
         setError(data.error);
         return;
       }
 
-      // Server-side 5xx errors
-      if (resp.status >= 500) {
+      // Server-side 5xx errors (never expose raw technical gateway/Express messages)
+      if (resolvedStatus >= 500) {
         setError(
-          data.error ||
-            (lang === "en"
-              ? "Server error during login. Please try again."
-              : "Ralat pelayan semasa log masuk. Sila cuba lagi.")
+          lang === "en"
+            ? "Unable to connect to the authentication service. Please try again or use Google Sign-In."
+            : "Tidak dapat menghubungi perkhidmatan pengesahan buat masa ini. Sila cuba lagi atau gunakan Log Masuk Google."
         );
         return;
       }
@@ -415,7 +456,7 @@ export default function LoginScreen({
           const idToken = await fbUser.getIdToken();
           const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${idToken}`,
@@ -496,15 +537,27 @@ export default function LoginScreen({
     try {
       const resp = await fetch(apiUrl("/api/auth/bootstrap-admin"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           password: bootstrapPassword,
           email: loginEmail.trim().toLowerCase() || undefined,
         }),
       });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || !data.success || !data.user) {
+      let data = await resp.json().catch(() => ({}));
+      let resolvedOk = resp.ok;
+      if (isEdgeStandaloneResponse(resp.status, data)) {
+        const edgeRes = await edgeBootstrapAdmin({
+          password: bootstrapPassword,
+          email: loginEmail.trim().toLowerCase() || undefined,
+        });
+        resolvedOk = edgeRes.success;
+        data = edgeRes;
+        if (edgeRes.success && edgeRes.user) {
+          await mintEdgeSessionForVerifiedUser(edgeRes.user);
+        }
+      }
+      if (!resolvedOk || !data.success || !data.user) {
         setError(data.error || (lang === "en" ? "Failed to activate Admin account." : "Gagal mengaktifkan akaun Admin."));
         return;
       }
@@ -580,6 +633,7 @@ export default function LoginScreen({
     try {
       const resp = await fetch(apiUrl("/api/auth/register-manual"), {
         method: "POST",
+        credentials: getFetchCredentialsMode(),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username,
@@ -590,9 +644,21 @@ export default function LoginScreen({
         }),
       });
 
-      const data = await resp.json();
+      let data = await resp.json().catch(() => ({}));
+      let resolvedOk = resp.ok;
+      if (isEdgeStandaloneResponse(resp.status, data)) {
+        const edgeRes = await edgeRegisterManual({
+          username,
+          fullName,
+          companyName: company,
+          password,
+          email,
+        });
+        resolvedOk = edgeRes.success;
+        data = edgeRes;
+      }
 
-      if (!resp.ok || !data.success || !data.user) {
+      if (!resolvedOk || !data.success || !data.user) {
         throw new Error(data.error || (lang === "en" ? "Registration failed." : "Pendaftaran akaun gagal."));
       }
 
@@ -696,7 +762,7 @@ export default function LoginScreen({
           const idToken = await res.user.getIdToken();
           const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${idToken}`,
@@ -1472,7 +1538,7 @@ export default function LoginScreen({
                         const idToken = await auth.currentUser.getIdToken();
                         const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
                           method: "POST",
-                          credentials: "same-origin",
+                          credentials: getFetchCredentialsMode(),
                           headers: {
                             "Content-Type": "application/json",
                             "Authorization": `Bearer ${idToken}`,

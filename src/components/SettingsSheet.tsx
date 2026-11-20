@@ -75,7 +75,8 @@ import { PermissionDenied } from "./UIStates";
 import { getAuthFetchHeaders, saveServerSessionToken } from "../utils/authSessionClient";
 import { auth } from "../firebase";
 import { syncUserProfileToFirestore } from "../utils/firestoreSync";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode, isEdgeStandaloneResponse } from "../utils/apiBase";
+import { edgeChangePassword, edgeLinkManual } from "../utils/edgeLocalAuth";
 import { validateAndReadImageFile } from "../utils/fileUploadSecurity";
 import { sanitizeConfigForBackup } from "../utils/adminBackup";
 
@@ -307,7 +308,7 @@ export default function SettingsSheet({
       getAuthFetchHeaders()
         .then((headers) =>
           fetch(apiUrl("/api/auth/2fa/status"), {
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
           })
         )
@@ -329,7 +330,7 @@ export default function SettingsSheet({
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const res = await fetch(apiUrl("/api/auth/2fa/setup"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
       });
       const data = await res.json().catch(() => ({}));
@@ -354,7 +355,7 @@ export default function SettingsSheet({
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const res = await fetch(apiUrl("/api/auth/2fa/enable"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ totpCode: twoFaCodeInput.trim() }),
       });
@@ -385,7 +386,7 @@ export default function SettingsSheet({
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const res = await fetch(apiUrl("/api/auth/2fa/disable"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({
           currentPassword: twoFaDisablePassword,
@@ -508,7 +509,7 @@ export default function SettingsSheet({
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       let resp = await fetch(apiUrl("/api/auth/change-password"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({
           userId: currentUser?.id,
@@ -518,8 +519,33 @@ export default function SettingsSheet({
         }),
       });
       let data = await resp.json().catch(() => ({}));
+      let resolvedOk = resp.ok;
+      let resolvedStatus = resp.status;
 
-      if (!resp.ok && data?.code === "NO_MANUAL_PASSWORD_SET") {
+      if (isEdgeStandaloneResponse(resp.status, data)) {
+        let edgeRes = await edgeChangePassword({
+          userId: currentUser?.id,
+          username: currentUser?.username || localConfig.usernameLogMasuk,
+          currentPassword: currentPasswordInput,
+          newPassword,
+          newUsername,
+        });
+        if (!edgeRes.success && edgeRes.code === "NO_MANUAL_PASSWORD_SET" && newPassword.length >= 8) {
+          edgeRes = await edgeLinkManual({
+            userId: currentUser?.id,
+            username: newUsername,
+            password: newPassword,
+            fullName: currentUser?.fullName,
+            companyName: currentUser?.companyName,
+            email: currentUser?.email,
+            role: currentUser?.role,
+            dbKey: currentUser?.dbKey,
+          });
+        }
+        resolvedOk = edgeRes.success;
+        resolvedStatus = edgeRes.status;
+        data = edgeRes;
+      } else if (!resp.ok && data?.code === "NO_MANUAL_PASSWORD_SET") {
         if (!newPassword || newPassword.length < 8) {
           setSaveError(
             currentLang === "en"
@@ -530,7 +556,7 @@ export default function SettingsSheet({
         }
         resp = await fetch(apiUrl("/api/auth/link-manual"), {
           method: "POST",
-          credentials: "same-origin",
+          credentials: getFetchCredentialsMode(),
           headers,
           body: JSON.stringify({
             userId: currentUser?.id,
@@ -539,10 +565,12 @@ export default function SettingsSheet({
           }),
         });
         data = await resp.json().catch(() => ({}));
+        resolvedOk = resp.ok;
+        resolvedStatus = resp.status;
       }
 
-      if (!resp.ok || !data.success) {
-        if (resp.status === 429 || data?.code === "CHANGE_PASSWORD_LOCKED") {
+      if (!resolvedOk || !data.success) {
+        if (resolvedStatus === 429 || data?.code === "CHANGE_PASSWORD_LOCKED") {
           setSaveError(
             currentLang === "en"
               ? "Too many attempts. Try again in 15 minutes."

@@ -268,6 +268,7 @@ function isAllowedCorsOrigin(origin: string | undefined): boolean {
       parsed.hostname === "localhost" ||
       parsed.hostname === "127.0.0.1" ||
       parsed.hostname.endsWith(".pages.dev") ||
+      parsed.hostname.endsWith(".workers.dev") ||
       parsed.hostname.endsWith(".run.app")
     ) {
       return true;

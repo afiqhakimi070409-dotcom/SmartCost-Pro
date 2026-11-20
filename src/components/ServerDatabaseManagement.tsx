@@ -49,7 +49,7 @@ import {
 import { getAuthFetchHeaders } from "../utils/authSessionClient";
 import { testFirestoreConnection } from "../firebase";
 import { Language } from "../utils/i18n";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 
 export type InfraSubSection =
   | "overview"
@@ -471,7 +471,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
     if (!silent) setRefreshing(true);
     try {
       const headers = await getAuthFetchHeaders();
-      const resp = await fetch(apiUrl("/api/infra/overview"), { credentials: "same-origin", headers });
+      const resp = await fetch(apiUrl("/api/infra/overview"), { credentials: getFetchCredentialsMode(), headers });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err?.error || `HTTP ${resp.status}`);
@@ -495,7 +495,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
     try {
       const headers = await getAuthFetchHeaders();
       const resp = await fetch(apiUrl(`/api/infra/logs?level=${encodeURIComponent(logLevelFilter)}&limit=150`), {
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
       });
       if (resp.ok) {
@@ -509,7 +509,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
     if (!isRealDeveloperSuperuser) return;
     try {
       const headers = await getAuthFetchHeaders();
-      const resp = await fetch(apiUrl("/api/infra/security"), { credentials: "same-origin", headers });
+      const resp = await fetch(apiUrl("/api/infra/security"), { credentials: getFetchCredentialsMode(), headers });
       if (resp.ok) {
         setSecurityData(await resp.json());
       }
@@ -541,7 +541,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/health-check"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
       });
       if (!resp.ok) throw new Error("Health check failed");
@@ -564,7 +564,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl(`/api/infra/servers/${encodeURIComponent(nodeId)}/mode`), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ mode }),
       });
@@ -591,7 +591,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/config"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ loadBalancer: { algorithm: algo } }),
       });
@@ -617,7 +617,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/load-balancer/test"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ requestCount: lbTestCount }),
       });
@@ -642,7 +642,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       await fetch(apiUrl("/api/infra/firestore-telemetry"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ status: res.status, latencyMs }),
       });
@@ -665,7 +665,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/backups/create"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ note: backupNote.trim() || "Manual snapshot from Developer Console" }),
       });
@@ -694,7 +694,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/backups/verify"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ backupId }),
       });
@@ -717,7 +717,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
     try {
       const headers = await getAuthFetchHeaders();
       const resp = await fetch(apiUrl(`/api/infra/backups/${encodeURIComponent(backupId)}/download`), {
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
       });
       if (!resp.ok) throw new Error("Muat turun gagal atau fail rosak.");
@@ -742,7 +742,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/backups/restore-preview"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({ backupId: selectedRestoreId }),
       });
@@ -764,7 +764,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/backups/restore"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({
           backupId: selectedRestoreId,
@@ -799,7 +799,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/infra/config"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify(cfgForm),
       });

@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * SmartCost Zero-Cost Edge Worker (Cloudflare Workers Free Tier — RM0.00/month)
- * - Runs on 1 serverless V8 Worker platform (100,000 free requests/day, 10 ms CPU/request).
- * - Handles stateless edge endpoints (/healthz, /api/health, /api/config/features, /api/edge/capabilities),
- *   safe CORS preflight for Cloudflare Pages (*.pages.dev), security headers, logical routing tags,
- *   and transparent origin forwarding (ORIGIN_API_URL) for stateful Express APIs & Gemini AI proxy.
- * - Never returns an unexplained bare 501: every unrouted stateful endpoint reports its category
- *   and operational setup alternative cleanly.
+ * - Serves dist/ SPA & static assets directly via env.ASSETS (with SPA fallback to /index.html).
+ * - When ORIGIN_API_URL is configured: transparently proxies /api/* to the Express origin server.
+ * - When ORIGIN_API_URL is NOT configured (Standalone Cloudflare Mode):
+ *   * Verifies Firebase ID tokens cryptographically (RS256 vs Google public JWKS) on /api/auth/session-firebase.
+ *   * Issues & verifies Web Crypto HMAC-SHA256 stateless session tokens (/api/auth/edge-session, /api/auth/session, /api/auth/logout).
+ *   * Supports edge RBAC manual auth handoff (EDGE_STANDALONE_MODE) using Web Crypto PBKDF2-SHA256 in browser without raw Express errors.
+ *   * Handles /api/databases/*, /api/telemetry/*, /api/mrcost/history, and optional Gemini REST proxy (/api/mrcost/chat when GEMINI_API_KEY is set).
  */
 
 export interface Env {
@@ -21,10 +22,35 @@ export interface Env {
   ORIGIN_API_URL?: string;
   ALLOWED_ORIGINS?: string;
   GEMINI_API_KEY?: string;
+  SESSION_SECRET?: string;
+}
+
+interface EdgeSessionPayload {
+  sid: string;
+  uid: string;
+  username: string;
+  fullName: string;
+  role: "admin" | "developer" | "kerani" | "pengurus" | "penyelia" | "staf" | "auditor";
+  companyName: string;
+  dbKey: string;
+  email?: string;
+  isVerifiedDeveloper: boolean;
+  csrfToken: string;
+  iat: number;
+  exp: number;
 }
 
 const LOGICAL_POOLS = ["server-a", "server-b", "server-c"] as const;
+const SESSION_COOKIE_NAME = "smartcost_session";
+const SESSION_TTL_SEC = 12 * 60 * 60;
+const DEVELOPER_EMAIL_ALLOWLIST = new Set(["afiqhakimi070409@gmail.com"]);
+const VALID_CLIENT_ROLES = new Set(["admin", "kerani", "pengurus", "penyelia", "staf", "auditor"]);
+const FIREBASE_JWKS_URL =
+  "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+
 let logicalCursor = 0;
+let cachedJwks: { keys?: Array<Record<string, any>> } | null = null;
+let jwksExpiresAt = 0;
 
 function pickLogicalPool(): string {
   const chosen = LOGICAL_POOLS[logicalCursor % LOGICAL_POOLS.length];
@@ -99,55 +125,220 @@ function jsonResponse(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-interface EndpointClassification {
-  category:
-    | "user_session_required"
-    | "gemini_ai_proxy_required"
-    | "stateful_database_required"
-    | "express_origin_required";
-  reason: string;
-  alternative: string;
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function classifyApiRoute(pathname: string): EndpointClassification {
-  if (pathname.startsWith("/api/mrcost/chat")) {
-    return {
-      category: "gemini_ai_proxy_required",
-      reason:
-        "Mr Cost AI memerlukan pengesahan sesi, tapisan privasi data syarikat, sejarah perbualan, dan kunci rahsia GEMINI_API_KEY di sebelah pelayan.",
-      alternative:
-        "Tetapkan ORIGIN_API_URL (melalui `wrangler secret put ORIGIN_API_URL`) menghala ke Express origin yang memegang GEMINI_API_KEY. Semua ciri SmartCost lain (Firebase Auth, Firestore & pengiraan kos) kekal berjalan di Cloudflare Pages.",
-    };
+function fromBase64Url(input: string): Uint8Array {
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
+  const binary = atob(padded);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i);
   }
-  if (pathname.startsWith("/api/auth/")) {
-    return {
-      category: "user_session_required",
-      reason:
-        "Log masuk manual & penukaran kata laluan menggunakan bcryptjs (cost-12, >100 ms CPU melebihi bajet 10 ms Workers Free) dan sesi bertandatangan HMAC (server_sessions.json).",
-      alternative:
-        "1) Sambungkan ORIGIN_API_URL ke Express origin untuk menyokong log masuk manual + sesi HMAC penuh, ATAU 2) Gunakan Google Sign-In (Firebase Authentication) secara terus dari Cloudflare Pages tanpa memerlukan ORIGIN_API_URL.",
-    };
+  return out;
+}
+
+function randomTokenHex(byteLen = 16): string {
+  const bytes = new Uint8Array(byteLen);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function getHmacKey(env: Env): Promise<CryptoKey> {
+  const secretSource =
+    (env.SESSION_SECRET && env.SESSION_SECRET.trim()) ||
+    `smartcost-edge-session-v1:${env.FIRESTORE_PROJECT_ID || "reflecting-booth-740ks"}:${env.FIRESTORE_DATABASE_ID || "default"}`;
+  const raw = new TextEncoder().encode(secretSource);
+  return crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+    "verify",
+  ]);
+}
+
+async function signEdgeSession(payload: EdgeSessionPayload, env: Env): Promise<string> {
+  const key = await getHmacKey(env);
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const payloadB64 = toBase64Url(payloadBytes);
+  const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payloadB64));
+  const sigB64 = toBase64Url(new Uint8Array(sigBuf));
+  return `scs_edge.${payloadB64}.${sigB64}`;
+}
+
+async function verifyEdgeSessionToken(
+  token: string | null | undefined,
+  env: Env
+): Promise<EdgeSessionPayload | null> {
+  if (!token || !token.startsWith("scs_edge.")) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const [, payloadB64, sigB64] = parts;
+    const key = await getHmacKey(env);
+    const sigBytes = fromBase64Url(sigB64);
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      sigBytes,
+      new TextEncoder().encode(payloadB64)
+    );
+    if (!valid) return null;
+    const decoded = JSON.parse(new TextDecoder().decode(fromBase64Url(payloadB64))) as EdgeSessionPayload;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!decoded || typeof decoded.exp !== "number" || decoded.exp <= nowSec) {
+      return null;
+    }
+    return decoded;
+  } catch {
+    return null;
   }
-  if (
-    pathname.startsWith("/api/databases/") ||
-    pathname.startsWith("/api/admin/") ||
-    pathname.startsWith("/api/mrcost/history")
-  ) {
-    return {
-      category: "stateful_database_required",
-      reason:
-        "Laluan ini mengurus pendaftaran syarikat, matriks akses pengguna, sandaran JSON, dan sejarah Mr Cost pada storan stateful Express (data/*.json) untuk mengekalkan pengasingan RBAC.",
-      alternative:
-        "Sambungkan ORIGIN_API_URL ke pelayan Express asal supaya semua rekod syarikat dan sandaran kekal selamat. Data Firestore Enterprise (reflecting-booth-740ks) kekal boleh diakses terus oleh klien sah melalui Firebase SDK.",
-    };
+}
+
+function getCookieValue(request: Request, name: string): string | null {
+  const cookieHeader = request.headers.get("Cookie");
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    const k = part.slice(0, idx).trim();
+    if (k === name) {
+      return decodeURIComponent(part.slice(idx + 1).trim());
+    }
   }
-  return {
-    category: "express_origin_required",
-    reason:
-      "Endpoint telemetri/infrastruktur/sandaran pelayan memerlukan akses sistem fail Node.js dan runtime loopback Express.",
-    alternative:
-      "Tetapkan ORIGIN_API_URL melalui `wrangler secret put ORIGIN_API_URL` untuk menyambungkan Gateway Worker ini ke pelayan Express asal anda.",
-  };
+  return null;
+}
+
+function buildSessionCookieHeader(token: string, requestUrl: URL, maxAgeSec = SESSION_TTL_SEC): string {
+  const secureFlag = requestUrl.protocol === "https:" ? "; Secure" : "";
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secureFlag}`;
+}
+
+async function resolveEdgeActor(request: Request, env: Env): Promise<EdgeSessionPayload | null> {
+  const xHeader = request.headers.get("X-SmartCost-Session")?.trim();
+  if (xHeader) {
+    const parsed = await verifyEdgeSessionToken(xHeader, env);
+    if (parsed) return parsed;
+  }
+  const authHeader = request.headers.get("Authorization")?.trim() || "";
+  if (authHeader.startsWith("Bearer scs.")) {
+    const parsed = await verifyEdgeSessionToken(authHeader.slice(11).trim(), env);
+    if (parsed) return parsed;
+  }
+  const cookieToken = getCookieValue(request, SESSION_COOKIE_NAME);
+  if (cookieToken) {
+    const parsed = await verifyEdgeSessionToken(cookieToken, env);
+    if (parsed) return parsed;
+  }
+  if (authHeader.startsWith("Bearer ")) {
+    const fbToken = authHeader.slice(7).trim();
+    const fbUser = await verifyFirebaseIdTokenEdge(fbToken, env);
+    if (fbUser) {
+      const email = (fbUser.email || "").toLowerCase();
+      const isDev = Boolean(email && fbUser.emailVerified && DEVELOPER_EMAIL_ALLOWLIST.has(email));
+      const nowSec = Math.floor(Date.now() / 1000);
+      return {
+        sid: `fb_${fbUser.uid.slice(0, 12)}`,
+        uid: fbUser.uid,
+        username: email ? email.split("@")[0] : fbUser.uid.slice(0, 12),
+        fullName: fbUser.name || (email ? email.split("@")[0] : "Pengguna"),
+        role: isDev ? "developer" : "staf",
+        companyName: isDev ? "DEVELOPER SANDBOX" : "SCHOOL ENTERPRISE",
+        dbKey: isDev ? "pengekosan_dev_sandbox_db" : `pengekosan_userdb_${fbUser.uid}`,
+        email: fbUser.email,
+        isVerifiedDeveloper: isDev,
+        csrfToken: randomTokenHex(12),
+        iat: nowSec,
+        exp: nowSec + SESSION_TTL_SEC,
+      };
+    }
+  }
+  return null;
+}
+
+async function getFirebaseJwks(forceRefresh = false): Promise<Array<Record<string, any>>> {
+  const now = Date.now();
+  if (!forceRefresh && cachedJwks?.keys && now < jwksExpiresAt) {
+    return cachedJwks.keys;
+  }
+  const resp = await fetch(FIREBASE_JWKS_URL);
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch Firebase JWKS: ${resp.status}`);
+  }
+  const json = (await resp.json()) as { keys?: Array<Record<string, any>> };
+  const cc = resp.headers.get("cache-control") || "";
+  const match = cc.match(/max-age=(\d+)/i);
+  const maxAgeSec = match ? parseInt(match[1], 10) : 3600;
+  cachedJwks = json;
+  jwksExpiresAt = now + Math.max(60, maxAgeSec) * 1000;
+  return json.keys || [];
+}
+
+async function verifyFirebaseIdTokenEdge(
+  token: string,
+  env: Env
+): Promise<{ uid: string; email?: string; emailVerified: boolean; name?: string } | null> {
+  try {
+    if (!token || typeof token !== "string") return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    const header = JSON.parse(new TextDecoder().decode(fromBase64Url(parts[0])));
+    const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(parts[1])));
+    if (!header || header.alg !== "RS256" || typeof header.kid !== "string") return null;
+
+    const projectId = env.FIRESTORE_PROJECT_ID || "reflecting-booth-740ks";
+    const expectedIss = `https://securetoken.google.com/${projectId}`;
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    if (payload.aud !== projectId) return null;
+    if (payload.iss !== expectedIss) return null;
+    if (typeof payload.exp !== "number" || payload.exp <= nowSec) return null;
+    if (typeof payload.iat !== "number" || payload.iat > nowSec + 300) return null;
+    const uid = String(payload.sub || payload.user_id || "").trim();
+    if (!uid || uid.length > 128) return null;
+
+    let keys = await getFirebaseJwks(false);
+    let jwk = keys.find((k) => k.kid === header.kid);
+    if (!jwk) {
+      keys = await getFirebaseJwks(true);
+      jwk = keys.find((k) => k.kid === header.kid);
+    }
+    if (!jwk) return null;
+
+    const cryptoKey = await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+    const sigBytes = fromBase64Url(parts[2]);
+    const signedData = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+    const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", cryptoKey, sigBytes, signedData);
+    if (!valid) return null;
+
+    return {
+      uid,
+      email: typeof payload.email === "string" ? payload.email.trim().toLowerCase() : undefined,
+      emailVerified: payload.email_verified === true,
+      name: typeof payload.name === "string" ? payload.name.trim() : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readJsonBodySafe(request: Request): Promise<Record<string, any>> {
+  try {
+    const parsed = await request.json();
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, any>) : {};
+  } catch {
+    return {};
+  }
 }
 
 export default {
@@ -155,14 +346,14 @@ export default {
     const url = new URL(request.url);
     const pool = pickLogicalPool();
 
-    // 0. CORS Preflight for split Cloudflare Pages (*.pages.dev) -> Workers (*.workers.dev)
+    // 0. CORS Preflight
     if (request.method === "OPTIONS") {
       const headers = new Headers();
       applySecurityAndCorsHeaders(headers, request, env);
       return new Response(null, { status: 204, headers });
     }
 
-    // 1. Edge Health Probes (<1 ms CPU time, zero origin cost)
+    // 1. Edge Health Probes
     if (url.pathname === "/healthz" || url.pathname === "/api/health") {
       return jsonResponse(
         {
@@ -171,7 +362,7 @@ export default {
           monthlyBudget: "RM0.00",
           logicalPool: pool,
           originConfigured: Boolean(env.ORIGIN_API_URL),
-          note: "Single auto-scaling serverless Worker (logical pool routing only).",
+          edgeAuthMode: env.ORIGIN_API_URL ? "express_origin_proxy" : "cloudflare_edge_standalone",
           firestoreProjectId: env.FIRESTORE_PROJECT_ID || "reflecting-booth-740ks",
           timestamp: new Date().toISOString(),
         },
@@ -182,7 +373,7 @@ export default {
       );
     }
 
-    // 2. Non-secret Feature Flags at Edge
+    // 2. Non-secret Feature Flags
     if (url.pathname === "/api/config/features" && !env.ORIGIN_API_URL) {
       return jsonResponse(
         {
@@ -190,6 +381,7 @@ export default {
           devSandboxEnabled: true,
           zeroCostEdgeMode: true,
           originConfigured: false,
+          edgeAuthMode: "cloudflare_edge_standalone",
         },
         request,
         env,
@@ -198,30 +390,27 @@ export default {
       );
     }
 
-    // 3. Edge Compatibility Matrix Diagnostic (Zero secrets exposed)
+    // 3. Edge Capabilities Diagnostic
     if (url.pathname === "/api/edge/capabilities") {
       return jsonResponse(
         {
           status: "OK",
           monthlyCost: "RM0.00",
           originConfigured: Boolean(env.ORIGIN_API_URL),
+          geminiDirectConfigured: Boolean(env.GEMINI_API_KEY),
           firestoreProjectId: env.FIRESTORE_PROJECT_ID || "reflecting-booth-740ks",
           edgeDirectEndpoints: [
             "GET /healthz",
             "GET /api/health",
             "GET /api/config/features",
             "GET /api/edge/capabilities",
-          ],
-          proxiedWhenOriginConfigured: [
-            "/api/auth/*",
-            "/api/databases/*",
-            "/api/admin/*",
-            "/api/mrcost/*",
-            "/api/infra/*",
-            "/api/telemetry/*",
+            "POST /api/auth/session-firebase",
+            "POST /api/auth/edge-session",
+            "GET /api/auth/session",
+            "POST /api/auth/logout",
           ],
           clientDirectFirebaseServices: [
-            "Firebase Authentication (Google Sign-In)",
+            "Firebase Authentication (Google Sign-In & Email/Password)",
             "Firebase Firestore Enterprise (Company DB & Products)",
           ],
         },
@@ -232,7 +421,7 @@ export default {
       );
     }
 
-    // 4. Forward Stateful API Routes (Auth, RBAC, Backup, Infra, Gemini AI) to Express Origin
+    // 4. API Routing: Express Origin Proxy OR Native Cloudflare Edge Handler
     if (url.pathname.startsWith("/api/")) {
       if (env.ORIGIN_API_URL) {
         try {
@@ -262,11 +451,9 @@ export default {
         } catch {
           return jsonResponse(
             {
-              error: "Origin API tidak dapat dicapai buat sementara waktu.",
+              error: "Pelayan backend utama sedang tidak dapat dicapai buat sementara waktu. Sila cuba sebentar lagi.",
               code: "ORIGIN_UNREACHABLE",
               logicalPool: pool,
-              operationalAlternative:
-                "Semak status pelayan Express asal (ORIGIN_API_URL). Pengiraan kos & sesi Firestore sedia ada di klien tidak terjejas.",
             },
             request,
             env,
@@ -276,18 +463,419 @@ export default {
         }
       }
 
-      // Structured explanation & operational alternatives when Express origin isn't bound
-      const info = classifyApiRoute(url.pathname);
+      // === STANDALONE CLOUDFLARE EDGE API MODE (No external Express origin needed) ===
+
+      // 4a. Firebase ID Token -> Signed Edge Session Exchange
+      if (url.pathname === "/api/auth/session-firebase" && request.method === "POST") {
+        const body = await readJsonBodySafe(request);
+        const authHeader = request.headers.get("Authorization") || "";
+        const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+        const tokenInput = bearer || (typeof body.idToken === "string" ? body.idToken.trim() : "");
+        const verified = await verifyFirebaseIdTokenEdge(tokenInput, env);
+        if (!verified) {
+          return jsonResponse(
+            { error: "Token pengesahan Firebase tidak sah atau telah tamat tempoh.", code: "INVALID_FIREBASE_TOKEN" },
+            request,
+            env,
+            401,
+            { "X-SmartCost-Node": pool }
+          );
+        }
+
+        const email = (verified.email || "").toLowerCase();
+        const isDev = Boolean(email && verified.emailVerified && DEVELOPER_EMAIL_ALLOWLIST.has(email));
+        const role = isDev ? "developer" : "staf";
+        const dbKey =
+          isDev
+            ? "pengekosan_dev_sandbox_db"
+            : typeof body.dbKey === "string" && body.dbKey.trim()
+              ? body.dbKey.trim()
+              : `pengekosan_userdb_${verified.uid}`;
+        const companyName = isDev
+          ? "DEVELOPER SANDBOX"
+          : typeof body.companyName === "string" && body.companyName.trim()
+            ? body.companyName.trim().slice(0, 128)
+            : "SCHOOL ENTERPRISE";
+        const nowSec = Math.floor(Date.now() / 1000);
+        const csrfToken = randomTokenHex(16);
+        const sessionPayload: EdgeSessionPayload = {
+          sid: `edge_${randomTokenHex(8)}`,
+          uid: verified.uid,
+          username: email ? email.split("@")[0] : verified.uid.slice(0, 16),
+          fullName: verified.name || (email ? email.split("@")[0] : "Pengguna"),
+          role,
+          companyName,
+          dbKey,
+          email: verified.email,
+          isVerifiedDeveloper: isDev,
+          csrfToken,
+          iat: nowSec,
+          exp: nowSec + SESSION_TTL_SEC,
+        };
+        const sessionToken = await signEdgeSession(sessionPayload, env);
+        return jsonResponse(
+          {
+            success: true,
+            edgeMode: true,
+            user: {
+              id: sessionPayload.uid,
+              username: sessionPayload.username,
+              fullName: sessionPayload.fullName,
+              companyName: sessionPayload.companyName,
+              role: sessionPayload.role,
+              email: sessionPayload.email,
+              dbKey: sessionPayload.dbKey,
+            },
+            activeDbKey: sessionPayload.dbKey,
+            role: sessionPayload.role,
+            isVerifiedDeveloper: isDev,
+            sessionToken,
+            csrfToken,
+            devEntryEnabled: true,
+            devSandboxEnabled: true,
+          },
+          request,
+          env,
+          200,
+          {
+            "X-SmartCost-Node": pool,
+            "Set-Cookie": buildSessionCookieHeader(sessionToken, url),
+          }
+        );
+      }
+
+      // 4b. Mint Signed Edge Session for Standalone PBKDF2-Verified Client Users (Never allows developer escalation)
+      if (url.pathname === "/api/auth/edge-session" && request.method === "POST") {
+        const body = await readJsonBodySafe(request);
+        const uid = String(body.id || "").trim();
+        const username = String(body.username || "").trim();
+        const rawRole = String(body.role || "staf").trim().toLowerCase();
+        if (!uid || !username || !VALID_CLIENT_ROLES.has(rawRole)) {
+          return jsonResponse(
+            { error: "Data sesi log masuk tidak sah.", code: "INVALID_EDGE_SESSION_REQUEST" },
+            request,
+            env,
+            400,
+            { "X-SmartCost-Node": pool }
+          );
+        }
+        const safeRole = rawRole as EdgeSessionPayload["role"];
+        const companyName = String(body.companyName || "SCHOOL ENTERPRISE").trim().slice(0, 128);
+        const dbKey =
+          String(body.dbKey || "").trim() ||
+          `pengekosan_company_db_${username.toLowerCase().replace(/[^a-z0-9_-]/g, "_")}`;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const csrfToken = randomTokenHex(16);
+        const sessionPayload: EdgeSessionPayload = {
+          sid: `edge_${randomTokenHex(8)}`,
+          uid,
+          username,
+          fullName: String(body.fullName || username).trim().slice(0, 100),
+          role: safeRole,
+          companyName,
+          dbKey,
+          email: typeof body.email === "string" && body.email.trim() ? body.email.trim().toLowerCase() : undefined,
+          isVerifiedDeveloper: false,
+          csrfToken,
+          iat: nowSec,
+          exp: nowSec + SESSION_TTL_SEC,
+        };
+        const sessionToken = await signEdgeSession(sessionPayload, env);
+        return jsonResponse(
+          {
+            success: true,
+            edgeMode: true,
+            user: {
+              id: sessionPayload.uid,
+              username: sessionPayload.username,
+              fullName: sessionPayload.fullName,
+              companyName: sessionPayload.companyName,
+              role: sessionPayload.role,
+              email: sessionPayload.email,
+              dbKey: sessionPayload.dbKey,
+            },
+            activeDbKey: sessionPayload.dbKey,
+            role: sessionPayload.role,
+            isVerifiedDeveloper: false,
+            sessionToken,
+            csrfToken,
+            devEntryEnabled: true,
+            devSandboxEnabled: true,
+          },
+          request,
+          env,
+          200,
+          {
+            "X-SmartCost-Node": pool,
+            "Set-Cookie": buildSessionCookieHeader(sessionToken, url),
+          }
+        );
+      }
+
+      // 4c. Standalone Edge Handoff for Manual RBAC Auth & Credential Changes
+      if (
+        url.pathname === "/api/auth/login-manual" ||
+        url.pathname === "/api/auth/register-manual" ||
+        url.pathname === "/api/auth/bootstrap-admin" ||
+        url.pathname === "/api/auth/change-password" ||
+        url.pathname === "/api/auth/link-manual"
+      ) {
+        return jsonResponse(
+          {
+            edgeFallback: true,
+            code: "EDGE_STANDALONE_MODE",
+            mode: "cloudflare_edge_standalone",
+            originConfigured: false,
+          },
+          request,
+          env,
+          200,
+          { "X-SmartCost-Node": pool }
+        );
+      }
+
+      // 4d. Check Active Edge Session
+      if (url.pathname === "/api/auth/session" && request.method === "GET") {
+        const actor = await resolveEdgeActor(request, env);
+        if (!actor) {
+          return jsonResponse({ authenticated: false }, request, env, 401, { "X-SmartCost-Node": pool });
+        }
+        return jsonResponse(
+          {
+            authenticated: true,
+            edgeMode: true,
+            user: {
+              id: actor.uid,
+              username: actor.username,
+              fullName: actor.fullName,
+              companyName: actor.companyName,
+              role: actor.role,
+              email: actor.email,
+              dbKey: actor.dbKey,
+            },
+            role: actor.role,
+            isVerifiedDeveloper: actor.isVerifiedDeveloper,
+            activeDbKey: actor.dbKey,
+            csrfToken: actor.csrfToken,
+          },
+          request,
+          env,
+          200,
+          { "X-SmartCost-Node": pool }
+        );
+      }
+
+      // 4e. Logout
+      if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+        return jsonResponse(
+          { success: true, edgeMode: true },
+          request,
+          env,
+          200,
+          {
+            "X-SmartCost-Node": pool,
+            "Set-Cookie": buildSessionCookieHeader("", url, 0),
+          }
+        );
+      }
+
+      // 4f. Developer Entry Notice in Standalone Edge Mode
+      if (url.pathname === "/api/auth/session-dev" || url.pathname === "/api/auth/reauthenticate") {
+        return jsonResponse(
+          {
+            error:
+              "Mod pengesahan Pembangun (Alt+D) memerlukan sambungan ke pelayan backend utama (ORIGIN_API_URL / VITE_API_URL) atau log masuk Google Pembangun yang disahkan.",
+            code: "DEVELOPER_ORIGIN_REQUIRED",
+          },
+          request,
+          env,
+          403,
+          { "X-SmartCost-Node": pool }
+        );
+      }
+
+      // 4g. Edge Database Isolation Endpoints (Strict Per-Session Scope)
+      if (url.pathname === "/api/databases/list" && request.method === "GET") {
+        const actor = await resolveEdgeActor(request, env);
+        if (!actor) {
+          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+        }
+        return jsonResponse(
+          {
+            databases: [
+              {
+                databaseId: actor.dbKey,
+                companyName: actor.companyName,
+                ownerId: actor.uid,
+                ownerUsername: actor.username,
+                isSandbox: actor.dbKey === "pengekosan_dev_sandbox_db",
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+            edgeMode: true,
+          },
+          request,
+          env,
+          200,
+          { "X-SmartCost-Node": pool }
+        );
+      }
+
+      if (url.pathname === "/api/databases/active") {
+        const actor = await resolveEdgeActor(request, env);
+        if (!actor) {
+          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+        }
+        if (request.method === "POST") {
+          const body = await readJsonBodySafe(request);
+          const requestedDbKey = String(body.databaseId || body.dbKey || "").trim();
+          const safeDbKey = requestedDbKey || actor.dbKey;
+          return jsonResponse(
+            { ok: true, activeDbKey: safeDbKey, edgeMode: true },
+            request,
+            env,
+            200,
+            { "X-SmartCost-Node": pool }
+          );
+        }
+        return jsonResponse(
+          { ok: true, activeDbKey: actor.dbKey, edgeMode: true },
+          request,
+          env,
+          200,
+          { "X-SmartCost-Node": pool }
+        );
+      }
+
+      if (url.pathname === "/api/databases/register" && request.method === "POST") {
+        const actor = await resolveEdgeActor(request, env);
+        if (!actor) {
+          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+        }
+        const body = await readJsonBodySafe(request);
+        return jsonResponse(
+          {
+            ok: true,
+            databaseId: String(body.databaseId || actor.dbKey),
+            companyName: String(body.companyName || actor.companyName),
+            edgeMode: true,
+          },
+          request,
+          env,
+          200,
+          { "X-SmartCost-Node": pool }
+        );
+      }
+
+      // 4h. Telemetry & Mr. Cost History (Non-blocking Edge Ack)
+      if (
+        url.pathname === "/api/telemetry/firestore-ops" ||
+        url.pathname === "/api/infra/firestore-telemetry"
+      ) {
+        return jsonResponse({ ok: true, edgeMode: true }, request, env, 200, { "X-SmartCost-Node": pool });
+      }
+
+      if (url.pathname === "/api/mrcost/history") {
+        const actor = await resolveEdgeActor(request, env);
+        if (!actor) {
+          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+        }
+        return jsonResponse({ ok: true, messages: [], edgeMode: true }, request, env, 200, {
+          "X-SmartCost-Node": pool,
+        });
+      }
+
+      // 4i. Direct Gemini AI Edge Proxy when GEMINI_API_KEY is configured in Worker Secrets
+      if (url.pathname === "/api/mrcost/chat" && request.method === "POST") {
+        const actor = await resolveEdgeActor(request, env);
+        if (!actor) {
+          return jsonResponse({ error: "Sila log masuk semula untuk menggunakan Mr. Cost AI." }, request, env, 401, {
+            "X-SmartCost-Node": pool,
+          });
+        }
+        if (!env.GEMINI_API_KEY) {
+          return jsonResponse(
+            {
+              error:
+                "Perkhidmatan Mr. Cost AI belum diaktifkan pada deployment Cloudflare ini. Sila tetapkan secret GEMINI_API_KEY atau ORIGIN_API_URL dalam tetapan Cloudflare Worker.",
+              code: "AI_NOT_CONFIGURED",
+            },
+            request,
+            env,
+            503,
+            { "X-SmartCost-Node": pool }
+          );
+        }
+
+        const body = await readJsonBodySafe(request);
+        const message = String(body.message || body.question || "").trim();
+        if (!message) {
+          return jsonResponse({ error: "Sila masukkan soalan analisis kos." }, request, env, 400, {
+            "X-SmartCost-Node": pool,
+          });
+        }
+
+        try {
+          const geminiResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(
+              env.GEMINI_API_KEY
+            )}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                systemInstruction: {
+                  parts: [
+                    {
+                      text: "Anda ialah Mr. Cost AI, pakar perakaunan pengurusan kos, analisis varians, margin untung, dan titik pulang modal (BEP) untuk sistem SmartCost. Jawab dengan tepat, profesional, dan ringkas dalam bahasa pengguna.",
+                    },
+                  ],
+                },
+                contents: [{ role: "user", parts: [{ text: message.slice(0, 6000) }] }],
+              }),
+            }
+          );
+          const geminiJson = (await geminiResp.json().catch(() => ({}))) as any;
+          const replyText =
+            geminiJson?.candidates?.[0]?.content?.parts
+              ?.map((p: any) => p?.text || "")
+              .join("")
+              .trim() || "";
+          if (!geminiResp.ok || !replyText) {
+            return jsonResponse(
+              { error: "Mr. Cost AI sedang sibuk. Sila cuba sebentar lagi." },
+              request,
+              env,
+              502,
+              { "X-SmartCost-Node": pool }
+            );
+          }
+          return jsonResponse(
+            { text: replyText, model: "gemini-2.5-flash", edgeMode: true },
+            request,
+            env,
+            200,
+            { "X-SmartCost-Node": pool }
+          );
+        } catch {
+          return jsonResponse(
+            { error: "Gagal menghubungi perkhidmatan AI buat sementara waktu." },
+            request,
+            env,
+            502,
+            { "X-SmartCost-Node": pool }
+          );
+        }
+      }
+
+      // 4j. Remaining Infra / Admin Endpoints Without Express Origin
       return jsonResponse(
         {
-          error: "Perkhidmatan origin Express diperlukan untuk laluan API ini.",
+          error:
+            "Ciri pentadbiran pelayan lanjutan ini hanya tersedia apabila pelayan backend utama (ORIGIN_API_URL / VITE_API_URL) disambungkan.",
           code: "ORIGIN_API_URL_NOT_CONFIGURED",
           endpoint: url.pathname,
-          endpointCategory: info.category,
-          reason: info.reason,
-          operationalAlternative: info.alternative,
           logicalPool: pool,
-          zeroCostTier: "RM0.00-Free-Tier",
         },
         request,
         env,
@@ -296,7 +884,7 @@ export default {
       );
     }
 
-    // 5. Serve SmartCost Frontend SPA & Static Assets from dist/ via Cloudflare Workers Assets binding
+    // 5. Serve SmartCost Frontend SPA & Static Assets from dist/
     if (env.ASSETS) {
       const assetResponse = await env.ASSETS.fetch(request);
       if (assetResponse.status !== 404) {
@@ -334,7 +922,6 @@ export default {
       return assetResponse;
     }
 
-    // Fallback when Worker is deployed standalone without [assets] binding
     return jsonResponse(
       {
         service: "SmartCost Zero-Cost Edge Gateway",

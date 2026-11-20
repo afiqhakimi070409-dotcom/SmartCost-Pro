@@ -12,7 +12,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Lock, AlertCircle, X, ShieldCheck } from "lucide-react";
 import { Language } from "../utils/i18n";
 import { saveServerSessionToken, getAuthFetchHeaders } from "../utils/authSessionClient";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 import { UserRole } from "../types";
 
 export interface DeveloperAuthSuccessPayload {
@@ -147,7 +147,7 @@ export default function DeveloperAuthModal({
         const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
         const resp = await fetch(apiUrl("/api/auth/reauthenticate"), {
           method: "POST",
-          credentials: "same-origin",
+          credentials: getFetchCredentialsMode(),
           headers,
           body: JSON.stringify({
             username: cleanUser,
@@ -177,7 +177,7 @@ export default function DeveloperAuthModal({
         if (resp.status === 401 && data?.code === "SESSION_EXPIRED") {
           const refreshResp = await fetch(apiUrl("/api/auth/session-dev"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               username: cleanUser,
@@ -238,7 +238,7 @@ export default function DeveloperAuthModal({
 
       const resp = await fetch(apiUrl("/api/auth/session-dev"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: cleanUser,

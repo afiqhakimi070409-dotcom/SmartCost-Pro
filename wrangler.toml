@@ -19,16 +19,18 @@ run_worker_first = ["/api/*", "/healthz"]
 # - Build output directory: dist
 # - Static assets from dist/ (index.html, assets/) are served directly at / and SPA routes
 # - /api/* and /healthz always run through workers/smartcost-edge-worker.ts first
-# - Optional Build env var (when Pages *.pages.dev calls Worker *.workers.dev separately):
-#   VITE_API_BASE_URL = "https://smartcost-zero-cost-gateway.<subdomain>.workers.dev"
+# - Optional Build env var if calling an external Express backend directly from browser:
+#   VITE_API_URL = "https://your-express-backend.example.com"
+# - Or set Worker Secret ORIGIN_API_URL so the Worker proxies /api/* without CORS
 
 [vars]
 APP_COST_TIER = "RM0.00-Free-Tier"
 FIRESTORE_PROJECT_ID = "reflecting-booth-740ks"
 FIRESTORE_DATABASE_ID = "ai-studio-remixsmartcostpr-940297e1-af61-42e5-8469-9bca8d60c481"
-# Optional comma-separated custom frontend origins allowed by CORS (besides *.pages.dev):
+# Optional comma-separated custom frontend origins allowed by CORS:
 # ALLOWED_ORIGINS = "https://smartcost.yourdomain.com"
 
 # Encrypted Secrets (NEVER commit real values — set via Cloudflare Dashboard or `npx wrangler secret put`):
-# - ORIGIN_API_URL : URL of your Express origin server (e.g. https://your-origin-host.example.com)
-# - GEMINI_API_KEY : Set on Express origin environment / secret manager (never exposed to browser)
+# - ORIGIN_API_URL : (Optional) URL of your Express origin server (e.g. Cloud Run / Render / Railway / VPS)
+# - GEMINI_API_KEY : (Optional on Worker when ORIGIN_API_URL is unset) Enables Mr. Cost AI directly on Cloudflare Worker
+# - SESSION_SECRET : Recommended 64-char random hex string for signing Worker HMAC edge session cookies

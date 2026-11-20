@@ -56,7 +56,7 @@ import {
 } from "../utils/mrcostEngine";
 import { getAuthFetchHeaders, saveServerSessionToken } from "../utils/authSessionClient";
 import { auth } from "../firebase";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 
 function safeMarkdownUrlTransform(url: string): string {
   const trimmed = (url || "").trim();
@@ -330,7 +330,7 @@ export default function MrCostSheet({
         .then((headers) =>
           fetch(apiUrl("/api/mrcost/history"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({
               databaseId: dbId,
@@ -427,7 +427,7 @@ export default function MrCostSheet({
         .then((headers) =>
           fetch(apiUrl(`/api/mrcost/history?databaseId=${encodeURIComponent(resolvedDbId)}`), {
             method: "DELETE",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
           })
         )
@@ -585,7 +585,7 @@ export default function MrCostSheet({
             const idToken = await auth.currentUser.getIdToken(true);
             const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
               method: "POST",
-              credentials: "same-origin",
+              credentials: getFetchCredentialsMode(),
               headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${idToken}`,
@@ -604,7 +604,7 @@ export default function MrCostSheet({
             const regHeaders = await getAuthFetchHeaders({ "Content-Type": "application/json" });
             const regResp = await fetch(apiUrl("/api/databases/register"), {
               method: "POST",
-              credentials: "same-origin",
+              credentials: getFetchCredentialsMode(),
               headers: regHeaders,
               body: JSON.stringify({
                 databaseId: requestDbId,
@@ -628,7 +628,7 @@ export default function MrCostSheet({
             });
             let fallbackRes = await fetch(apiUrl("/api/mrcost/chat"), {
               method: "POST",
-              credentials: "same-origin",
+              credentials: getFetchCredentialsMode(),
               headers: reqHeaders,
               body: JSON.stringify({
                 ...basePayload,
@@ -645,7 +645,7 @@ export default function MrCostSheet({
                 });
                 fallbackRes = await fetch(apiUrl("/api/mrcost/chat"), {
                   method: "POST",
-                  credentials: "same-origin",
+                  credentials: getFetchCredentialsMode(),
                   headers: retryHeaders,
                   body: JSON.stringify({
                     ...basePayload,
@@ -687,7 +687,7 @@ export default function MrCostSheet({
         });
         let response = await fetch(apiUrl("/api/mrcost/chat"), {
           method: "POST",
-          credentials: "same-origin",
+          credentials: getFetchCredentialsMode(),
           headers: streamHeaders,
           body: JSON.stringify({
             ...basePayload,
@@ -703,7 +703,7 @@ export default function MrCostSheet({
             });
             response = await fetch(apiUrl("/api/mrcost/chat"), {
               method: "POST",
-              credentials: "same-origin",
+              credentials: getFetchCredentialsMode(),
               headers: retryHeaders,
               body: JSON.stringify({
                 ...basePayload,

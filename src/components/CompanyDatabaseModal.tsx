@@ -40,7 +40,7 @@ import { NoSearchResults, EmptyState } from "./UIStates";
 import { getAuthFetchHeaders, saveServerSessionToken } from "../utils/authSessionClient";
 import { deleteCompanyFromFirestore } from "../utils/firestoreSync";
 import DeveloperAuthModal from "./DeveloperAuthModal";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 import { validateAndReadJsonFile } from "../utils/fileUploadSecurity";
 
 export const DEV_SANDBOX_DB_KEY = "pengekosan_dev_sandbox_db";
@@ -306,7 +306,7 @@ export default function CompanyDatabaseModal({
     if (isDeveloper) {
       try {
         const headers = await getAuthFetchHeaders();
-        const resp = await fetch(apiUrl("/api/databases/list"), { credentials: "same-origin", headers });
+        const resp = await fetch(apiUrl("/api/databases/list"), { credentials: getFetchCredentialsMode(), headers });
         if (resp.ok) {
           const data = await resp.json().catch(() => null);
           const deletedSet = new Set<string>(
@@ -430,7 +430,7 @@ export default function CompanyDatabaseModal({
         .then((headers) =>
           fetch(apiUrl("/api/databases/inspect"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({ databaseId: dbKey }),
           })
@@ -472,7 +472,7 @@ export default function CompanyDatabaseModal({
         .then((headers) =>
           fetch(apiUrl("/api/databases/register"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({ databaseId: newKey, companyName: trimmed, explicitCreate: true }),
           })
@@ -522,7 +522,7 @@ export default function CompanyDatabaseModal({
         .then((headers) =>
           fetch(apiUrl("/api/databases/register"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({ databaseId: key, companyName: compName }),
           })
@@ -582,7 +582,7 @@ export default function CompanyDatabaseModal({
         .then((headers) =>
           fetch(apiUrl("/api/databases/register"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({ databaseId: renameTarget.dbKey, companyName: newName }),
           })
@@ -702,7 +702,7 @@ export default function CompanyDatabaseModal({
       const delHeaders = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const deleteResp = await fetch(apiUrl("/api/auth/delete-company-db"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers: delHeaders,
         body: JSON.stringify({
           dbKey: target.dbKey,

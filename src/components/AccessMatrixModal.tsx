@@ -20,7 +20,7 @@ import {
 } from "../types";
 import { Language, getStoredLanguage } from "../utils/i18n";
 import { getAuthFetchHeaders } from "../utils/authSessionClient";
-import { apiUrl } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 
 interface AccessMatrixModalProps {
   isOpen: boolean;
@@ -88,7 +88,7 @@ export default function AccessMatrixModal({
         try {
           const headers = await getAuthFetchHeaders();
           const resp = await fetch(apiUrl("/api/admin/users"), {
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
           });
           if (!resp.ok) return;
@@ -154,7 +154,7 @@ export default function AccessMatrixModal({
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
       const resp = await fetch(apiUrl("/api/admin/users/role"), {
         method: "POST",
-        credentials: "same-origin",
+        credentials: getFetchCredentialsMode(),
         headers,
         body: JSON.stringify({
           targetUserId: userObj.id,

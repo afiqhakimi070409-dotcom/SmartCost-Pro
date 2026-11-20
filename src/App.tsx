@@ -23,7 +23,7 @@ import { isDeveloperShortcutEvent } from "./utils/devShortcut";
 import CompanyDatabaseModal, { getCompanyDbKey } from "./components/CompanyDatabaseModal";
 import { syncCompanyToFirestore, fetchCompanyFromFirestore } from "./utils/firestoreSync";
 import { testFirestoreConnection, auth, onAuthStateChanged, logOut } from "./firebase";
-import { apiUrl } from "./utils/apiBase";
+import { apiUrl, getFetchCredentialsMode } from "./utils/apiBase";
 
 import { 
   LayoutDashboard, 
@@ -204,7 +204,7 @@ export default function App() {
   }, [sessionCheckDone, isLoggedIn, isDevSuperuser]);
 
   useEffect(() => {
-    fetch(apiUrl("/api/config/features"), { credentials: "same-origin" })
+    fetch(apiUrl("/api/config/features"), { credentials: getFetchCredentialsMode() })
       .then((r) => (r.ok ? r.json() : null))
       .then((cfg) => {
         if (cfg) {
@@ -355,7 +355,7 @@ export default function App() {
           const currentDb = localStorage.getItem("pengekosan_active_db_key") || activeLoadedDbKey;
           const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${idToken}`,
@@ -380,7 +380,7 @@ export default function App() {
           await auth.authStateReady();
         }
         const headers = await getAuthFetchHeaders();
-        const probe = await fetch(apiUrl("/api/auth/session"), { credentials: "same-origin", headers });
+        const probe = await fetch(apiUrl("/api/auth/session"), { credentials: getFetchCredentialsMode(), headers });
         if (probe.status === 401 || probe.status === 403) {
           try {
             localStorage.removeItem("pengekosan_current_session");
@@ -701,7 +701,7 @@ export default function App() {
           if (localStorage.getItem(targetDbKey)) {
             const regResp = await fetch(apiUrl("/api/databases/register"), {
               method: "POST",
-              credentials: "same-origin",
+              credentials: getFetchCredentialsMode(),
               headers,
               body: JSON.stringify({ databaseId: targetDbKey, companyName }),
             }).catch(() => null);
@@ -734,7 +734,7 @@ export default function App() {
           }
           activeResp = await fetch(apiUrl("/api/databases/active"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({ databaseId: targetDbKey }),
           });
@@ -1061,7 +1061,7 @@ export default function App() {
         .then((headers) =>
           fetch(apiUrl("/api/databases/clone-sandbox"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: getFetchCredentialsMode(),
             headers,
             body: JSON.stringify({ databaseId: keyToClone }),
           })
@@ -1543,7 +1543,7 @@ export default function App() {
     clearServerSessionToken();
     fetch(apiUrl("/api/auth/logout"), {
       method: "POST",
-      credentials: "same-origin",
+      credentials: getFetchCredentialsMode(),
     }).catch(() => {});
     logOut().catch(console.warn);
     setIsLoggedIn(false);
