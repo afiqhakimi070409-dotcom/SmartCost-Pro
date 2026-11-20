@@ -13,6 +13,7 @@ import { Lock, AlertCircle, X, ShieldCheck } from "lucide-react";
 import { Language } from "../utils/i18n";
 import { saveServerSessionToken, getAuthFetchHeaders } from "../utils/authSessionClient";
 import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
+import { auth, signInWithGoogle, formatAuthErrorMessage } from "../firebase";
 import { UserRole } from "../types";
 
 export interface DeveloperAuthSuccessPayload {
@@ -52,6 +53,7 @@ export default function DeveloperAuthModal({
   const [requires2FA, setRequires2FA] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,6 +64,7 @@ export default function DeveloperAuthModal({
       setTotpCode("");
       setRequires2FA(false);
       setIsSubmitting(false);
+      setIsGoogleSubmitting(false);
       setTimeout(() => {
         usernameInputRef.current?.focus();
       }, 30);
@@ -72,6 +75,7 @@ export default function DeveloperAuthModal({
       setRequires2FA(false);
       setError("");
       setIsSubmitting(false);
+      setIsGoogleSubmitting(false);
     }
   }, [isOpen]);
 
@@ -108,6 +112,96 @@ export default function DeveloperAuthModal({
     lang === "en"
       ? "Too many attempts. Please try again in a few minutes."
       : "Terlalu banyak percubaan. Cuba lagi dalam beberapa minit.";
+
+  const exchangeDeveloperGoogleToken = async (idToken: string) => {
+    const resp = await fetch(apiUrl("/api/auth/session-dev"), {
+      method: "POST",
+      credentials: getFetchCredentialsMode(),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        idToken,
+        ...(mode === "refresh" || mode === "reauth" ? { stampReauth: true } : {}),
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    return { resp, data };
+  };
+
+  const handleGoogleDeveloperAuth = async () => {
+    if (isSubmitting || isGoogleSubmitting) return;
+    setError("");
+    setIsGoogleSubmitting(true);
+    try {
+      let currentToken: string | null = null;
+      if (auth.currentUser && auth.currentUser.emailVerified) {
+        try {
+          currentToken = await auth.currentUser.getIdToken(true);
+        } catch {}
+      }
+
+      if (currentToken) {
+        const firstTry = await exchangeDeveloperGoogleToken(currentToken);
+        if (firstTry.resp.ok && firstTry.data?.success && firstTry.data?.user?.role === "developer") {
+          saveServerSessionToken(firstTry.data.sessionToken, firstTry.data.csrfToken);
+          onSuccess({
+            id: firstTry.data.user.id,
+            username: firstTry.data.user.username,
+            fullName: firstTry.data.user.fullName || "System Developer",
+            companyName: firstTry.data.user.companyName || "DEVELOPER SANDBOX",
+            role: "developer",
+            email: firstTry.data.user.email,
+            dbKey: firstTry.data.user.dbKey || "pengekosan_dev_sandbox_db",
+            freshReauthNonce: firstTry.data.freshReauthNonce,
+            reauthExpiresAt: firstTry.data.reauthExpiresAt,
+          });
+          return;
+        }
+      }
+
+      const googleRes = await signInWithGoogle({ lang: lang === "en" ? "en" : "ms" });
+      if (!googleRes.user) {
+        return;
+      }
+      const idToken = await googleRes.user.getIdToken(true);
+      const { resp, data } = await exchangeDeveloperGoogleToken(idToken);
+      if (resp.ok && data?.success && data?.user?.role === "developer") {
+        saveServerSessionToken(data.sessionToken, data.csrfToken);
+        onSuccess({
+          id: data.user.id,
+          username: data.user.username,
+          fullName: data.user.fullName || "System Developer",
+          companyName: data.user.companyName || "DEVELOPER SANDBOX",
+          role: "developer",
+          email: data.user.email,
+          dbKey: data.user.dbKey || "pengekosan_dev_sandbox_db",
+          freshReauthNonce: data.freshReauthNonce,
+          reauthExpiresAt: data.reauthExpiresAt,
+        });
+        return;
+      }
+      console.warn("[DeveloperAuthModal] Google dev verification failed:", { status: resp.status, code: data?.code, error: data?.error });
+      setError(
+        data?.error ||
+          (lang === "en"
+            ? `Developer Google verification failed (HTTP ${resp.status}).`
+            : `Pengesahan Google Pembangun gagal (HTTP ${resp.status}).`)
+      );
+    } catch (err: any) {
+      console.warn("[DeveloperAuthModal] Google sign-in error:", err?.code || err?.message);
+      setError(
+        err?.code?.startsWith("auth/")
+          ? formatAuthErrorMessage(err, lang === "en" ? "en" : "ms")
+          : (lang === "en"
+              ? "Failed to verify Developer Google account. Please try again."
+              : "Gagal mengesahkan akaun Google Pembangun. Sila cuba lagi.")
+      );
+    } finally {
+      setIsGoogleSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -289,8 +383,17 @@ export default function DeveloperAuthModal({
         return;
       }
 
+      if (resp.status >= 400) {
+        console.warn("[DeveloperAuthModal] Developer auth failed:", {
+          status: resp.status,
+          code: data?.code,
+          error: data?.error,
+        });
+      }
+
       setError(data?.error || uniformCredError);
-    } catch {
+    } catch (err: any) {
+      console.warn("[DeveloperAuthModal] Network/fetch exception:", err?.message || err);
       setError(uniformCredError);
     } finally {
       setIsSubmitting(false);
@@ -421,14 +524,14 @@ export default function DeveloperAuthModal({
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isGoogleSubmitting}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-60"
             >
               {lang === "en" ? "Cancel" : "Batal"}
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isGoogleSubmitting}
               className="px-4 py-2 bg-[#0b3c7a] hover:bg-[#082d5a] text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
@@ -437,6 +540,26 @@ export default function DeveloperAuthModal({
                 <Lock className="w-3.5 h-3.5" />
               )}
               <span>{lang === "en" ? "Authenticate" : "Sahkan"}</span>
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={handleGoogleDeveloperAuth}
+              disabled={isSubmitting || isGoogleSubmitting}
+              className="w-full px-3.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isGoogleSubmitting ? (
+                <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-[#0b3c7a] rounded-full animate-spin" />
+              ) : (
+                <ShieldCheck className="w-3.5 h-3.5 text-[#0b3c7a]" />
+              )}
+              <span>
+                {lang === "en"
+                  ? "Verify with Developer Google Account"
+                  : "Sahkan dengan Google Pembangun"}
+              </span>
             </button>
           </div>
         </form>

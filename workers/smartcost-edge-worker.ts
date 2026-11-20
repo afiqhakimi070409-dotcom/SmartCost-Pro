@@ -22,7 +22,11 @@ export interface Env {
   ORIGIN_API_URL?: string;
   ALLOWED_ORIGINS?: string;
   GEMINI_API_KEY?: string;
+  GOOGLE_API_KEY?: string;
   SESSION_SECRET?: string;
+  DEV_ACCESS_SECRET?: string;
+  DEV_PASSKEY?: string;
+  DEV_USERNAME?: string;
 }
 
 interface EdgeSessionPayload {
@@ -341,6 +345,75 @@ async function readJsonBodySafe(request: Request): Promise<Record<string, any>> 
   }
 }
 
+async function constantTimeTextEqual(a: string, b: string): Promise<boolean> {
+  if (!a || !b) return false;
+  const enc = new TextEncoder();
+  const [hashA, hashB] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const bytesA = new Uint8Array(hashA);
+  const bytesB = new Uint8Array(hashB);
+  let diff = 0;
+  for (let i = 0; i < bytesA.length; i++) {
+    diff |= bytesA[i] ^ bytesB[i];
+  }
+  return diff === 0;
+}
+
+function buildMrCostBusinessSummary(businessData: any): string {
+  if (!businessData || typeof businessData !== "object") return "";
+  try {
+    const cfg = businessData.config || {};
+    const currency = String(cfg.currency || "RM");
+    const product = String(cfg.namaProduk || "").trim();
+    const unit = String(cfg.unitProduk || "unit").trim();
+    const qStd = Number(cfg.sasaranKuantitiStandard || 0);
+    const pStd = Number(cfg.hargaJualanStandard || 0);
+    const qAct = Number(cfg.kuantitiSebenarDijual || 0);
+    const pAct = Number(cfg.hargaJualanSebenar || 0);
+    const dmList = Array.isArray(businessData.bahanMentah) ? businessData.bahanMentah : [];
+    const dlList = Array.isArray(businessData.buruhLangsung) ? businessData.buruhLangsung : [];
+    const vohList = Array.isArray(businessData.overheadBerubah) ? businessData.overheadBerubah : [];
+    const fohList = Array.isArray(businessData.overheadTetap) ? businessData.overheadTetap : [];
+
+    const dmPerUnit = dmList.reduce((s: number, b: any) => s + Number(b?.stdKuantitiPerUnit || 0) * Number(b?.stdHargaPerUnit || 0), 0);
+    const dlPerUnit = dlList.reduce((s: number, l: any) => s + Number(l?.stdJamPerUnit || 0) * Number(l?.stdKadarPerJam || 0), 0);
+    const vohPerUnit = vohList.reduce((s: number, o: any) => s + Number(o?.stdKosPerUnit || 0), 0);
+    const varCost = dmPerUnit + dlPerUnit + vohPerUnit;
+    const totalFoh = fohList.reduce((s: number, f: any) => s + Number(f?.stdKosMingguan || 0), 0);
+    const fohPerUnit = qStd > 0 ? totalFoh / qStd : 0;
+    const fullCost = varCost + fohPerUnit;
+
+    if (!product && varCost === 0 && totalFoh === 0 && pStd === 0) return "";
+
+    const templates = Array.isArray(businessData.templates)
+      ? businessData.templates
+          .slice(0, 8)
+          .map((t: any) => `${t?.namaProduk || "Produk"} (${currency} ${Number(t?.konfigurasi?.hargaJualanStandard || 0).toFixed(2)})`)
+          .join(", ")
+      : "";
+
+    return [
+      "<data_perniagaan>",
+      `Produk Aktif: ${product || "Produk"} (${unit})`,
+      `Harga Jualan Standard: ${currency} ${pStd.toFixed(2)} | Sasaran Kuantiti Mingguan: ${qStd}`,
+      `Harga Jualan Sebenar: ${currency} ${pAct.toFixed(2)} | Kuantiti Sebenar: ${qAct}`,
+      `Kos Bahan Langsung/unit: ${currency} ${dmPerUnit.toFixed(2)} | Buruh/unit: ${currency} ${dlPerUnit.toFixed(2)} | OH Berubah/unit: ${currency} ${vohPerUnit.toFixed(2)}`,
+      `Jumlah Kos Berubah/unit: ${currency} ${varCost.toFixed(2)} | Jumlah Kos Tetap Mingguan: ${currency} ${totalFoh.toFixed(2)} | Kos Penuh/unit: ${currency} ${fullCost.toFixed(2)}`,
+      dmList.length > 0
+        ? `Bahan Mentah: ${dmList.slice(0, 12).map((b: any) => `${b?.nama || "Bahan"} (${b?.stdKuantitiPerUnit || 0} ${b?.unit || ""} @ ${currency}${Number(b?.stdHargaPerUnit || 0).toFixed(2)})`).join("; ")}`
+        : "",
+      templates ? `Senarai Produk Lain: ${templates}` : "",
+      "</data_perniagaan>",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -375,12 +448,16 @@ export default {
 
     // 2. Non-secret Feature Flags
     if (url.pathname === "/api/config/features" && !env.ORIGIN_API_URL) {
+      const geminiConfigured = Boolean((env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim());
+      const devSecretConfigured = Boolean((env.DEV_ACCESS_SECRET || env.DEV_PASSKEY || "").trim());
       return jsonResponse(
         {
           devEntryEnabled: true,
           devSandboxEnabled: true,
           zeroCostEdgeMode: true,
           originConfigured: false,
+          aiConfigured: geminiConfigured,
+          devSecretConfigured,
           edgeAuthMode: "cloudflare_edge_standalone",
         },
         request,
@@ -392,12 +469,15 @@ export default {
 
     // 3. Edge Capabilities Diagnostic
     if (url.pathname === "/api/edge/capabilities") {
+      const geminiConfigured = Boolean((env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim());
+      const devSecretConfigured = Boolean((env.DEV_ACCESS_SECRET || env.DEV_PASSKEY || "").trim());
       return jsonResponse(
         {
           status: "OK",
           monthlyCost: "RM0.00",
           originConfigured: Boolean(env.ORIGIN_API_URL),
-          geminiDirectConfigured: Boolean(env.GEMINI_API_KEY),
+          geminiDirectConfigured: geminiConfigured,
+          devSecretConfigured,
           firestoreProjectId: env.FIRESTORE_PROJECT_ID || "reflecting-booth-740ks",
           edgeDirectEndpoints: [
             "GET /healthz",
@@ -405,9 +485,12 @@ export default {
             "GET /api/config/features",
             "GET /api/edge/capabilities",
             "POST /api/auth/session-firebase",
+            "POST /api/auth/session-dev",
+            "POST /api/auth/reauthenticate",
             "POST /api/auth/edge-session",
             "GET /api/auth/session",
             "POST /api/auth/logout",
+            "POST /api/mrcost/chat",
           ],
           clientDirectFirebaseServices: [
             "Firebase Authentication (Google Sign-In & Email/Password)",
@@ -679,13 +762,182 @@ export default {
         );
       }
 
-      // 4f. Developer Entry Notice in Standalone Edge Mode
-      if (url.pathname === "/api/auth/session-dev" || url.pathname === "/api/auth/reauthenticate") {
+      // 4f. Standalone Developer Authentication (Alt+D) & Reauthentication
+      // Supports:
+      //  (a) Verified Firebase Google Developer ID Token (RS256 verified against Google JWKS + DEVELOPER_EMAIL_ALLOWLIST)
+      //  (b) Cloudflare Worker Encrypted Secret (DEV_ACCESS_SECRET / DEV_PASSKEY + optional DEV_USERNAME)
+      if (
+        (url.pathname === "/api/auth/session-dev" || url.pathname === "/api/auth/reauthenticate") &&
+        request.method === "POST"
+      ) {
+        const body = await readJsonBodySafe(request);
+        const authHeader = request.headers.get("Authorization") || "";
+        const bearerRaw = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+        const bearerFirebase = bearerRaw && !bearerRaw.startsWith("scs.") ? bearerRaw : "";
+        const idToken = typeof body.idToken === "string" && body.idToken.trim() ? body.idToken.trim() : bearerFirebase;
+
+        const nowSec = Math.floor(Date.now() / 1000);
+        const reauthExpiresAt = (nowSec + 15 * 60) * 1000;
+        const freshReauthNonce = randomTokenHex(16);
+
+        // Method (a): Google Developer Firebase ID Token Verification
+        if (idToken) {
+          const verified = await verifyFirebaseIdTokenEdge(idToken, env);
+          const email = (verified?.email || "").trim().toLowerCase();
+          if (!verified || !verified.emailVerified || !email || !DEVELOPER_EMAIL_ALLOWLIST.has(email)) {
+            return jsonResponse(
+              {
+                error: "Akaun Google ini tidak dibenarkan untuk akses Pembangun (Developer).",
+                code: "DEVELOPER_GOOGLE_UNAUTHORIZED",
+              },
+              request,
+              env,
+              401,
+              { "X-SmartCost-Node": pool }
+            );
+          }
+
+          const csrfToken = randomTokenHex(16);
+          const sessionPayload: EdgeSessionPayload = {
+            sid: `edge_dev_${randomTokenHex(8)}`,
+            uid: verified.uid,
+            username: email.split("@")[0] || "afiqhakimi070409",
+            fullName: verified.name || "System Developer",
+            role: "developer",
+            companyName: "DEVELOPER SANDBOX",
+            dbKey: "pengekosan_dev_sandbox_db",
+            email: verified.email,
+            isVerifiedDeveloper: true,
+            csrfToken,
+            iat: nowSec,
+            exp: nowSec + SESSION_TTL_SEC,
+          };
+          const sessionToken = await signEdgeSession(sessionPayload, env);
+          return jsonResponse(
+            {
+              success: true,
+              edgeMode: true,
+              user: {
+                id: sessionPayload.uid,
+                username: sessionPayload.username,
+                fullName: sessionPayload.fullName,
+                companyName: sessionPayload.companyName,
+                role: "developer",
+                email: sessionPayload.email,
+                dbKey: sessionPayload.dbKey,
+              },
+              activeDbKey: sessionPayload.dbKey,
+              role: "developer",
+              isVerifiedDeveloper: true,
+              isRecentlyReauthenticated: true,
+              reauthExpiresAt,
+              freshReauthNonce,
+              sessionToken,
+              csrfToken,
+              devEntryEnabled: true,
+              devSandboxEnabled: true,
+            },
+            request,
+            env,
+            200,
+            {
+              "X-SmartCost-Node": pool,
+              "Set-Cookie": buildSessionCookieHeader(sessionToken, url),
+            }
+          );
+        }
+
+        // Method (b): Cloudflare Worker Secret Developer Passkey Verification (No hardcoded password)
+        const configuredDevSecret = (env.DEV_ACCESS_SECRET || env.DEV_PASSKEY || "").trim();
+        const inputUsername = String(body.username || "").trim().toLowerCase();
+        const inputPasskey = String(body.passkey ?? body.password ?? "");
+
+        if (!inputUsername) {
+          return jsonResponse(
+            {
+              error: "Sila masukkan nama pengguna pembangun.",
+              code: "USERNAME_EMPTY",
+            },
+            request,
+            env,
+            400,
+            { "X-SmartCost-Node": pool }
+          );
+        }
+
+        if (configuredDevSecret) {
+          const expectedUsername = (env.DEV_USERNAME || "afiqhakimi070409").trim().toLowerCase();
+          const usernameOk = inputUsername === expectedUsername || inputUsername === "developer";
+          const passkeyOk = await constantTimeTextEqual(inputPasskey, configuredDevSecret);
+          if (!usernameOk || !passkeyOk) {
+            return jsonResponse(
+              {
+                error: "Nama pengguna atau kata laluan pembangun tidak betul.",
+                code: "INVALID_DEV_CREDENTIALS",
+              },
+              request,
+              env,
+              401,
+              { "X-SmartCost-Node": pool }
+            );
+          }
+
+          const csrfToken = randomTokenHex(16);
+          const sessionPayload: EdgeSessionPayload = {
+            sid: `edge_dev_${randomTokenHex(8)}`,
+            uid: `dev_${expectedUsername}`,
+            username: expectedUsername,
+            fullName: "System Developer",
+            role: "developer",
+            companyName: "DEVELOPER SANDBOX",
+            dbKey: "pengekosan_dev_sandbox_db",
+            email: "afiqhakimi070409@gmail.com",
+            isVerifiedDeveloper: true,
+            csrfToken,
+            iat: nowSec,
+            exp: nowSec + SESSION_TTL_SEC,
+          };
+          const sessionToken = await signEdgeSession(sessionPayload, env);
+          return jsonResponse(
+            {
+              success: true,
+              edgeMode: true,
+              user: {
+                id: sessionPayload.uid,
+                username: sessionPayload.username,
+                fullName: sessionPayload.fullName,
+                companyName: sessionPayload.companyName,
+                role: "developer",
+                email: sessionPayload.email,
+                dbKey: sessionPayload.dbKey,
+              },
+              activeDbKey: sessionPayload.dbKey,
+              role: "developer",
+              isVerifiedDeveloper: true,
+              isRecentlyReauthenticated: true,
+              reauthExpiresAt,
+              freshReauthNonce,
+              sessionToken,
+              csrfToken,
+              devEntryEnabled: true,
+              devSandboxEnabled: true,
+            },
+            request,
+            env,
+            200,
+            {
+              "X-SmartCost-Node": pool,
+              "Set-Cookie": buildSessionCookieHeader(sessionToken, url),
+            }
+          );
+        }
+
         return jsonResponse(
           {
             error:
-              "Mod pengesahan Pembangun (Alt+D) memerlukan sambungan ke pelayan backend utama (ORIGIN_API_URL / VITE_API_URL) atau log masuk Google Pembangun yang disahkan.",
-            code: "DEVELOPER_ORIGIN_REQUIRED",
+              "Gunakan butang 'Sahkan dengan Google Pembangun' di bawah, atau tetapkan secret DEV_ACCESS_SECRET / ORIGIN_API_URL dalam tetapan Cloudflare Worker.",
+            code: "DEVELOPER_CLOUDFLARE_SETUP_REQUIRED",
+            canUseGoogleDeveloperSignIn: true,
           },
           request,
           env,
@@ -785,20 +1037,32 @@ export default {
         });
       }
 
-      // 4i. Direct Gemini AI Edge Proxy when GEMINI_API_KEY is configured in Worker Secrets
+      // 4i. Direct Gemini AI Edge Proxy when GEMINI_API_KEY / GOOGLE_API_KEY is configured in Worker Secrets
       if (url.pathname === "/api/mrcost/chat" && request.method === "POST") {
         const actor = await resolveEdgeActor(request, env);
         if (!actor) {
-          return jsonResponse({ error: "Sila log masuk semula untuk menggunakan Mr. Cost AI." }, request, env, 401, {
-            "X-SmartCost-Node": pool,
-          });
+          return jsonResponse(
+            {
+              error: "Sesi log masuk anda tidak sah atau telah tamat tempoh. Sila log masuk semula untuk menggunakan Mr. Cost AI.",
+              code: "SESSION_UNAUTHORIZED",
+              httpStatus: 401,
+            },
+            request,
+            env,
+            401,
+            { "X-SmartCost-Node": pool }
+          );
         }
-        if (!env.GEMINI_API_KEY) {
+
+        const geminiApiKey = (env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim();
+        if (!geminiApiKey) {
           return jsonResponse(
             {
               error:
-                "Perkhidmatan Mr. Cost AI belum diaktifkan pada deployment Cloudflare ini. Sila tetapkan secret GEMINI_API_KEY atau ORIGIN_API_URL dalam tetapan Cloudflare Worker.",
+                "Kunci API AI (GEMINI_API_KEY) belum ditetapkan pada Cloudflare Worker. Sila tetapkan secret GEMINI_API_KEY atau ORIGIN_API_URL dalam tetapan Cloudflare Dashboard.",
               code: "AI_NOT_CONFIGURED",
+              httpStatus: 503,
+              detail: "Cloudflare Worker environment secret GEMINI_API_KEY is not set.",
             },
             request,
             env,
@@ -810,56 +1074,142 @@ export default {
         const body = await readJsonBodySafe(request);
         const message = String(body.message || body.question || "").trim();
         if (!message) {
-          return jsonResponse({ error: "Sila masukkan soalan analisis kos." }, request, env, 400, {
-            "X-SmartCost-Node": pool,
-          });
-        }
-
-        try {
-          const geminiResp = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(
-              env.GEMINI_API_KEY
-            )}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                systemInstruction: {
-                  parts: [
-                    {
-                      text: "Anda ialah Mr. Cost AI, pakar perakaunan pengurusan kos, analisis varians, margin untung, dan titik pulang modal (BEP) untuk sistem SmartCost. Jawab dengan tepat, profesional, dan ringkas dalam bahasa pengguna.",
-                    },
-                  ],
-                },
-                contents: [{ role: "user", parts: [{ text: message.slice(0, 6000) }] }],
-              }),
-            }
-          );
-          const geminiJson = (await geminiResp.json().catch(() => ({}))) as any;
-          const replyText =
-            geminiJson?.candidates?.[0]?.content?.parts
-              ?.map((p: any) => p?.text || "")
-              .join("")
-              .trim() || "";
-          if (!geminiResp.ok || !replyText) {
-            return jsonResponse(
-              { error: "Mr. Cost AI sedang sibuk. Sila cuba sebentar lagi." },
-              request,
-              env,
-              502,
-              { "X-SmartCost-Node": pool }
-            );
-          }
           return jsonResponse(
-            { text: replyText, model: "gemini-2.5-flash", edgeMode: true },
+            {
+              error: "Sila masukkan soalan analisis kos.",
+              code: "EMPTY_MESSAGE",
+              httpStatus: 400,
+            },
             request,
             env,
-            200,
+            400,
             { "X-SmartCost-Node": pool }
           );
-        } catch {
+        }
+
+        const lang = body.language === "en" ? "en" : "ms";
+        const systemText =
+          lang === "en"
+            ? "You are Mr. Cost AI, a management cost accounting expert specializing in variance analysis, profit margin, break-even point (BEP), and pricing strategy for SmartCost. Answer accurately, concisely, and professionally."
+            : "Anda ialah Mr. Cost AI, pakar perakaunan pengurusan kos, analisis varians, margin untung, dan titik pulang modal (BEP) untuk sistem SmartCost. Jawab dengan tepat, profesional, dan ringkas dalam bahasa pengguna.";
+
+        const businessContext = buildMrCostBusinessSummary(body.businessData);
+        const rawHistory = Array.isArray(body.history) ? body.history.slice(-6) : [];
+        const contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
+        for (const h of rawHistory) {
+          const text = String(h?.parts?.[0]?.text || h?.text || h?.message || "").trim();
+          if (!text) continue;
+          const role = h?.role === "model" ? "model" : "user";
+          if (contents.length === 0 && role !== "user") continue;
+          if (contents.length > 0 && contents[contents.length - 1].role === role) {
+            contents[contents.length - 1].parts[0].text += `\n\n${text}`;
+          } else {
+            contents.push({ role, parts: [{ text: text.slice(0, 4000) }] });
+          }
+        }
+        if (contents.length > 0 && contents[contents.length - 1].role === "user") {
+          contents.pop();
+        }
+        const promptText = businessContext
+          ? `${businessContext}\n\nSoalan pengguna: ${message.slice(0, 6000)}`
+          : message.slice(0, 6000);
+        contents.push({ role: "user", parts: [{ text: promptText }] });
+
+        const EDGE_MODEL_CHAIN = ["gemini-4-hydrogen", "gemini-2.5-flash", "gemini-flash-latest"];
+        let lastStatus = 502;
+        let lastCode = "UPSTREAM_AI_ERROR";
+        let lastDetail = "Tiada respons daripada perkhidmatan AI.";
+        let lastModelTried = EDGE_MODEL_CHAIN[0];
+
+        try {
+          for (const model of EDGE_MODEL_CHAIN) {
+            lastModelTried = model;
+            const geminiResp = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
+                geminiApiKey
+              )}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemText }] },
+                  contents,
+                }),
+              }
+            );
+            const geminiJson = (await geminiResp.json().catch(() => ({}))) as any;
+            const replyText =
+              geminiJson?.candidates?.[0]?.content?.parts
+                ?.map((p: any) => p?.text || "")
+                .join("")
+                .trim() || "";
+
+            if (geminiResp.ok && replyText) {
+              return jsonResponse(
+                { text: replyText, model, edgeMode: true },
+                request,
+                env,
+                200,
+                { "X-SmartCost-Node": pool }
+              );
+            }
+
+            lastStatus = geminiResp.status || 502;
+            lastCode = String(geminiJson?.error?.status || `HTTP_${lastStatus}`);
+            lastDetail = String(geminiJson?.error?.message || `Gemini API returned HTTP ${lastStatus}`);
+
+            // Immediate fail on invalid or unauthorized API key so exact error surfaces
+            if (
+              lastStatus === 400 ||
+              lastStatus === 401 ||
+              lastStatus === 403 ||
+              lastCode === "API_KEY_INVALID" ||
+              lastCode === "PERMISSION_DENIED"
+            ) {
+              return jsonResponse(
+                {
+                  error:
+                    lastStatus === 400 || lastCode === "API_KEY_INVALID"
+                      ? "Kunci API Gemini (GEMINI_API_KEY) tidak sah atau ditolak oleh Google AI."
+                      : "Akses API Gemini ditolak (HTTP 403). Sila semak kebenaran/billing GEMINI_API_KEY.",
+                  code: lastCode,
+                  httpStatus: lastStatus,
+                  detail: lastDetail,
+                  modelTried: model,
+                },
+                request,
+                env,
+                lastStatus,
+                { "X-SmartCost-Node": pool }
+              );
+            }
+          }
+
           return jsonResponse(
-            { error: "Gagal menghubungi perkhidmatan AI buat sementara waktu." },
+            {
+              error:
+                lastStatus === 429
+                  ? "Had kuota permintaan Gemini API dicapai buat sementara waktu (HTTP 429). Sila cuba sebentar lagi."
+                  : `Gagal mendapat respons daripada model AI (HTTP ${lastStatus}).`,
+              code: lastCode,
+              httpStatus: lastStatus,
+              detail: lastDetail,
+              modelTried: lastModelTried,
+            },
+            request,
+            env,
+            lastStatus >= 400 ? lastStatus : 502,
+            { "X-SmartCost-Node": pool }
+          );
+        } catch (err: any) {
+          return jsonResponse(
+            {
+              error: "Ralat rangkaian Cloudflare Worker semasa menghubungi perkhidmatan Gemini AI.",
+              code: "EDGE_AI_FETCH_ERROR",
+              httpStatus: 502,
+              detail: String(err?.message || err || "Network error"),
+              modelTried: lastModelTried,
+            },
             request,
             env,
             502,

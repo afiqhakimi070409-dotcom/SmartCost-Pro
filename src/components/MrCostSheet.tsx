@@ -241,6 +241,7 @@ export default function MrCostSheet({
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorTechDetail, setErrorTechDetail] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -448,6 +449,7 @@ export default function MrCostSheet({
     const requestLang = lang;
 
     setError(null);
+    setErrorTechDetail(null);
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -657,7 +659,12 @@ export default function MrCostSheet({
 
             if (!fallbackRes.ok) {
               const errData = await fallbackRes.json().catch(() => ({}));
-              throw new Error(errData.error || `Server error: Status ${fallbackRes.status}`);
+              const errObj: any = new Error(errData.error || `Server error: HTTP ${fallbackRes.status}`);
+              errObj.httpStatus = errData.httpStatus || fallbackRes.status;
+              errObj.code = errData.code;
+              errObj.detail = errData.detail;
+              errObj.modelTried = errData.modelTried;
+              throw errObj;
             }
 
             const data = await fallbackRes.json();
@@ -715,7 +722,12 @@ export default function MrCostSheet({
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Server error: Status ${response.status}`);
+          const errObj: any = new Error(errData.error || `Server error: HTTP ${response.status}`);
+          errObj.httpStatus = errData.httpStatus || response.status;
+          errObj.code = errData.code;
+          errObj.detail = errData.detail;
+          errObj.modelTried = errData.modelTried;
+          throw errObj;
         }
 
         const contentType = response.headers.get("content-type") || "";
@@ -769,14 +781,18 @@ export default function MrCostSheet({
                     }
                   } catch {}
                 } else if (eventType === "error" && dataStr) {
-                  const errObj = JSON.parse(dataStr);
-                  let rawErr = errObj.error || "Streaming error occurred";
+                  const errObjData = JSON.parse(dataStr);
+                  let rawErr = errObjData.error || "Streaming error occurred";
                   if (typeof rawErr === "string" && (rawErr.includes("Quota exceeded") || rawErr.includes("429") || rawErr.includes("RESOURCE_EXHAUSTED"))) {
                     rawErr = requestLang === "en"
                       ? "AI service quota temporarily reached. Please retry in a moment or reference the cost sheet directly."
                       : "Had kuota perkhidmatan AI dicapai buat sementara waktu. Sila cuba sebentar lagi atau rujuk lembaran kos secara terus.";
                   }
-                  throw new Error(rawErr);
+                  const sseErr: any = new Error(rawErr);
+                  sseErr.httpStatus = errObjData.httpStatus;
+                  sseErr.code = errObjData.code;
+                  sseErr.detail = errObjData.detail;
+                  throw sseErr;
                 }
               }
             }
@@ -849,7 +865,20 @@ export default function MrCostSheet({
         setActiveSimulationCard(generatedProposal);
       }
     } catch (err: any) {
-      console.error("Mr Cost AI inquiry error (full details):", err);
+      const httpStatus = err?.httpStatus ? Number(err.httpStatus) : undefined;
+      const errCode = typeof err?.code === "string" && err.code.trim() ? err.code.trim() : undefined;
+      const errDetail = typeof err?.detail === "string" && err.detail.trim() ? err.detail.trim() : undefined;
+      const modelTried = typeof err?.modelTried === "string" && err.modelTried.trim() ? err.modelTried.trim() : undefined;
+
+      console.error("[Mr Cost AI Error]", {
+        httpStatus,
+        code: errCode,
+        detail: errDetail,
+        modelTried,
+        message: err?.message,
+        raw: err,
+      });
+
       const cleanedSnapshot = snapshotWithPlaceholder.filter((m) => m.id !== botMsgId);
       saveMessagesForDatabase(requestDbId, requestLang, cleanedSnapshot);
 
@@ -861,29 +890,53 @@ export default function MrCostSheet({
           : "Mr Cost sedang sibuk, sila cuba lagi sebentar.";
 
         let cleanErrorMsg = fallbackMsg;
-        if (typeof err?.message === "string") {
+        if (errCode === "AI_NOT_CONFIGURED" || httpStatus === 503) {
+          cleanErrorMsg =
+            typeof err?.message === "string" && err.message.trim()
+              ? err.message.trim()
+              : (requestLang === "en"
+                  ? "Mr. Cost AI key (GEMINI_API_KEY) is not configured on this Cloudflare deployment."
+                  : "Kunci API Mr Cost AI (GEMINI_API_KEY) belum ditetapkan pada deployment Cloudflare ini.");
+        } else if (errCode === "SESSION_UNAUTHORIZED" || httpStatus === 401) {
+          cleanErrorMsg =
+            typeof err?.message === "string" && err.message.trim()
+              ? err.message.trim()
+              : (requestLang === "en"
+                  ? "Your session has expired. Please sign in again to use Mr. Cost AI."
+                  : "Sesi anda telah tamat tempoh. Sila log masuk semula untuk menggunakan Mr. Cost AI.");
+        } else if (typeof err?.message === "string") {
           const raw = err.message.trim();
           const lowerRaw = raw.toLowerCase();
+          const looksLikeHtmlOrStack =
+            raw.startsWith("<") ||
+            lowerRaw.includes("<!doctype") ||
+            raw.includes("ApiError") ||
+            (raw.includes("{") && raw.includes("}"));
           if (
-            !raw.includes("{") &&
-            !raw.includes("}") &&
-            !raw.includes("ApiError") &&
-            !raw.includes("INVALID_ARGUMENT") &&
-            !raw.includes("NOT_FOUND") &&
-            !raw.includes("400") &&
-            !raw.includes("500") &&
-            !raw.includes("404") &&
-            !raw.includes("status") &&
+            raw &&
+            !looksLikeHtmlOrStack &&
             !lowerRaw.includes("failed to fetch") &&
             !lowerRaw.includes("network error") &&
-            !lowerRaw.includes("load failed") &&
-            raw.length < 120
+            !lowerRaw.includes("load failed")
           ) {
             cleanErrorMsg = raw;
+          } else if (lowerRaw.includes("failed to fetch") || lowerRaw.includes("network error") || lowerRaw.includes("load failed")) {
+            cleanErrorMsg =
+              requestLang === "en"
+                ? "Network error while reaching the AI endpoint. Check your internet connection or VITE_API_URL."
+                : "Ralat rangkaian semasa menghubungi perkhidmatan AI. Sila semak sambungan internet atau tetapan VITE_API_URL.";
           }
         }
 
+        const techParts = [
+          httpStatus ? `HTTP ${httpStatus}` : null,
+          errCode ? `Kod: ${errCode}` : null,
+          modelTried ? `Model: ${modelTried}` : null,
+          errDetail && errDetail !== cleanErrorMsg ? errDetail : null,
+        ].filter(Boolean);
+
         setError(cleanErrorMsg);
+        setErrorTechDetail(techParts.length > 0 ? techParts.join(" · ") : null);
       }
     } finally {
       if (activeDbIdRef.current === requestDbId) {
@@ -1261,9 +1314,14 @@ export default function MrCostSheet({
         {error && (
           <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-xs flex items-start gap-3">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-bold text-xs">{lang === "en" ? "Connection Issue" : "Isu Sambungan AI"}</p>
               <p className="mt-0.5 leading-relaxed text-[11px]">{error}</p>
+              {errorTechDetail && (
+                <p className="mt-1.5 px-2 py-1 rounded bg-rose-100/80 border border-rose-200/80 font-mono text-[10px] text-rose-900 break-words">
+                  {errorTechDetail}
+                </p>
+              )}
               <button
                 onClick={() => {
                   if (messages.length > 1) {

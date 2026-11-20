@@ -3783,18 +3783,37 @@ app.post("/api/mrcost/chat", async (req, res) => {
       });
     }
 
-    const friendlyMessage = normalizedLang === "en"
-      ? "Mr. Cost is currently busy, please try again shortly."
-      : "Mr Cost sedang sibuk, sila cuba lagi sebentar.";
+    const isMissingKey = error instanceof MissingApiKeyError;
+    const rawStatus = Number(error?.status || (isMissingKey ? 503 : 503));
+    const httpStatus = rawStatus >= 400 && rawStatus <= 599 ? rawStatus : 503;
+    const errCode = isMissingKey
+      ? "AI_NOT_CONFIGURED"
+      : (httpStatus === 429 ? "RESOURCE_EXHAUSTED" : "UPSTREAM_AI_ERROR");
+
+    const friendlyMessage = isMissingKey
+      ? (normalizedLang === "en"
+          ? "AI API key (GEMINI_API_KEY) is not configured on the Express server."
+          : "Kunci API AI (GEMINI_API_KEY) belum ditetapkan pada pelayan Express.")
+      : (httpStatus === 429
+          ? (normalizedLang === "en"
+              ? "AI service quota temporarily reached (HTTP 429). Please retry in a moment."
+              : "Had kuota perkhidmatan AI dicapai buat sementara waktu (HTTP 429). Sila cuba sebentar lagi.")
+          : (normalizedLang === "en"
+              ? "Mr. Cost is currently busy, please try again shortly."
+              : "Mr Cost sedang sibuk, sila cuba lagi sebentar."));
+
+    const safeDetail = isMissingKey
+      ? "Missing GEMINI_API_KEY environment variable on Express origin."
+      : `Express AI upstream HTTP ${httpStatus}`;
 
     if (res.headersSent) {
       if (!res.writableEnded && !res.destroyed) {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: friendlyMessage })}\n\n`);
+        res.write(`event: error\ndata: ${JSON.stringify({ error: friendlyMessage, code: errCode, httpStatus, detail: safeDetail })}\n\n`);
         (res as unknown as { flush?: () => void }).flush?.();
         res.end();
       }
     } else {
-      res.status(503).json({ error: friendlyMessage });
+      res.status(httpStatus).json({ error: friendlyMessage, code: errCode, httpStatus, detail: safeDetail });
     }
   }
 });

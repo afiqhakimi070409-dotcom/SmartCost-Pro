@@ -31,6 +31,8 @@ FIRESTORE_DATABASE_ID = "ai-studio-remixsmartcostpr-940297e1-af61-42e5-8469-9bca
 # ALLOWED_ORIGINS = "https://smartcost.yourdomain.com"
 
 # Encrypted Secrets (NEVER commit real values — set via Cloudflare Dashboard or `npx wrangler secret put`):
-# - ORIGIN_API_URL : (Optional) URL of your Express origin server (e.g. Cloud Run / Render / Railway / VPS)
-# - GEMINI_API_KEY : (Optional on Worker when ORIGIN_API_URL is unset) Enables Mr. Cost AI directly on Cloudflare Worker
-# - SESSION_SECRET : Recommended 64-char random hex string for signing Worker HMAC edge session cookies
+# - ORIGIN_API_URL    : (Optional) URL of your Express origin server (e.g. Cloud Run / Render / Railway / VPS)
+# - GEMINI_API_KEY    : (Required for Mr Cost AI when ORIGIN_API_URL is unset) Server-side Gemini API key
+# - SESSION_SECRET    : Recommended 64-char random hex string for signing Worker HMAC edge session cookies
+# - DEV_ACCESS_SECRET : (Optional) Developer Alt+D passkey secret for standalone Cloudflare mode (or use Google Developer sign-in)
+# - DEV_USERNAME      : (Optional, defaults to afiqhakimi070409) Developer username paired with DEV_ACCESS_SECRET
