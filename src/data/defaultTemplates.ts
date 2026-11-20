@@ -1,0 +1,596 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import {
+  KonfigurasiSistem,
+  BahanMentah,
+  BuruhLangsung,
+  OverheadBerubah,
+  OverheadTetap,
+} from "../types";
+
+export interface TemplatPerniagaan {
+  id: string;
+  namaPerniagaan: string;
+  namaSyarikat?: string;
+  namaProduk: string;
+  konfigurasi: KonfigurasiSistem;
+  bahanMentah: BahanMentah[];
+  buruhLangsung: BuruhLangsung[];
+  overheadBerubah: OverheadBerubah[];
+  overheadTetap: OverheadTetap[];
+}
+
+export const defaultTemplates: TemplatPerniagaan[] = [
+  {
+    id: "popia-cabonara",
+    namaPerniagaan: "SCHOOL ENTERPRISE",
+    namaSyarikat: "SCHOOL ENTERPRISE",
+    namaProduk: "Crispy Carbonara Rolls",
+    konfigurasi: {
+      namaSyarikat: "SCHOOL ENTERPRISE",
+      namaProduk: "Crispy Carbonara Rolls",
+      unitProduk: "rolls",
+      hargaJualanStandard: 4.49,
+      hargaJualanSebenar: 4.49,
+      sasaranKuantitiStandard: 1000,
+      kuantitiSebenarDijual: 950,
+      currency: "RM",
+      usernameLogMasuk: "admin",
+      kataLaluanLogMasuk: "",
+    },
+    bahanMentah: [
+      {
+        id: "bm-p1",
+        nama: "Crispy Spring Roll Wrappers",
+        unit: "sheets",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 0.15,
+        sebenarKuantitiJumlah: 980,
+        sebenarHargaPerUnit: 0.15,
+      },
+      {
+        id: "bm-p2",
+        nama: "Carbonara Sauce & Evaporated Milk",
+        unit: "rolls",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 0.45,
+        sebenarKuantitiJumlah: 950,
+        sebenarHargaPerUnit: 0.48,
+      },
+      {
+        id: "bm-p3",
+        nama: "Minced Beef, Chicken & Sausage",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.05,
+        stdHargaPerUnit: 10,
+        sebenarKuantitiJumlah: 48,
+        sebenarHargaPerUnit: 10.5,
+      },
+      {
+        id: "bm-p4",
+        nama: "Mozzarella & Cheddar Cheese Blend",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.035,
+        stdHargaPerUnit: 18,
+        sebenarKuantitiJumlah: 34,
+        sebenarHargaPerUnit: 18.5,
+      },
+      {
+        id: "bm-p5",
+        nama: "Frying Oil & Golden Breadcrumbs",
+        unit: "rolls",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 0.2,
+        sebenarKuantitiJumlah: 950,
+        sebenarHargaPerUnit: 0.22,
+      },
+    ],
+    buruhLangsung: [
+      {
+        id: "bl-p1",
+        nama: "Roll Prep & Assembly Labor",
+        stdJamPerUnit: 0.02,
+        stdKadarPerJam: 12,
+        sebenarJamJumlah: 20,
+        sebenarKadarPerJam: 12.5,
+      },
+      {
+        id: "bl-p2",
+        nama: "Frying, Quality & Service",
+        stdJamPerUnit: 0.015,
+        stdKadarPerJam: 11,
+        sebenarJamJumlah: 15,
+        sebenarKadarPerJam: 11,
+      },
+    ],
+    overheadBerubah: [
+      {
+        id: "ob-p1",
+        nama: "Commercial Cooking Gas",
+        stdKosPerUnit: 0.1,
+        sebenarKosJumlah: 100,
+      },
+      {
+        id: "ob-p2",
+        nama: "Food Service Packaging & Boxes",
+        stdKosPerUnit: 0.2,
+        sebenarKosJumlah: 200,
+      },
+    ],
+    overheadTetap: [
+      {
+        id: "ot-p1",
+        nama: "Kiosk & Storefront Lease (Weekly)",
+        stdKosMingguan: 200,
+        sebenarKosJumlah: 200,
+      },
+      {
+        id: "ot-p2",
+        nama: "Weekly Utilities (Power & Water)",
+        stdKosMingguan: 60,
+        sebenarKosJumlah: 65,
+      },
+      {
+        id: "ot-p3",
+        nama: "Deep Fryer Equipment Depreciation",
+        stdKosMingguan: 25,
+        sebenarKosJumlah: 25,
+      },
+    ],
+  },
+  {
+    id: "warung-kopi-jaya",
+    namaPerniagaan: "Metropolitan Coffee Co.",
+    namaSyarikat: "Metropolitan Coffee Co.",
+    namaProduk: "Artisan Coffee & Toasted Brioche",
+    konfigurasi: {
+      namaSyarikat: "Metropolitan Coffee Co.",
+      namaProduk: "Artisan Coffee & Toasted Brioche",
+      unitProduk: "combos",
+      hargaJualanStandard: 5.5,
+      hargaJualanSebenar: 5.5,
+      sasaranKuantitiStandard: 800,
+      kuantitiSebenarDijual: 850,
+      currency: "RM",
+      usernameLogMasuk: "admin",
+      kataLaluanLogMasuk: "",
+    },
+    bahanMentah: [
+      {
+        id: "wkj-bm1",
+        nama: "Premium Espresso Coffee Beans",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.06,
+        stdHargaPerUnit: 14,
+        sebenarKuantitiJumlah: 52,
+        sebenarHargaPerUnit: 14.5,
+      },
+      {
+        id: "wkj-bm2",
+        nama: "Organic Whole Milk & Sweet Cream",
+        unit: "servings",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 0.6,
+        sebenarKuantitiJumlah: 850,
+        sebenarHargaPerUnit: 0.62,
+      },
+      {
+        id: "wkj-bm3",
+        nama: "Fresh Brioche Bakery Loaves",
+        unit: "slices",
+        stdKuantitiPerUnit: 2,
+        stdHargaPerUnit: 0.4,
+        sebenarKuantitiJumlah: 1720,
+        sebenarHargaPerUnit: 0.4,
+      },
+      {
+        id: "wkj-bm4",
+        nama: "Artisan Fruit Jam & Butter",
+        unit: "servings",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 0.5,
+        sebenarKuantitiJumlah: 850,
+        sebenarHargaPerUnit: 0.55,
+      },
+    ],
+    buruhLangsung: [
+      {
+        id: "wkj-bl1",
+        nama: "Head Barista & Drink Crafting",
+        stdJamPerUnit: 0.02,
+        stdKadarPerJam: 14,
+        sebenarJamJumlah: 18,
+        sebenarKadarPerJam: 14,
+      },
+      {
+        id: "wkj-bl2",
+        nama: "Bakery Prep & Counter Service",
+        stdJamPerUnit: 0.02,
+        stdKadarPerJam: 12.5,
+        sebenarJamJumlah: 17,
+        sebenarKadarPerJam: 12.5,
+      },
+    ],
+    overheadBerubah: [
+      {
+        id: "wkj-ob1",
+        nama: "Insulated Paper Cups & Lids",
+        stdKosPerUnit: 0.3,
+        sebenarKosJumlah: 260,
+      },
+      {
+        id: "wkj-ob2",
+        nama: "Eco Food Wraps & Napkins",
+        stdKosPerUnit: 0.15,
+        sebenarKosJumlah: 130,
+      },
+    ],
+    overheadTetap: [
+      {
+        id: "wkj-ot1",
+        nama: "Weekly Cafe Space Rent",
+        stdKosMingguan: 350,
+        sebenarKosJumlah: 350,
+      },
+      {
+        id: "wkj-ot2",
+        nama: "Utilities, Power & Water",
+        stdKosMingguan: 90,
+        sebenarKosJumlah: 95,
+      },
+    ],
+  },
+  {
+    id: "katering-selera-kampung",
+    namaPerniagaan: "Grand Gourmet Catering",
+    namaSyarikat: "Grand Gourmet Catering",
+    namaProduk: "Banquet Feast Package",
+    konfigurasi: {
+      namaSyarikat: "Grand Gourmet Catering",
+      namaProduk: "Banquet Feast Package",
+      unitProduk: "plates",
+      hargaJualanStandard: 13.5,
+      hargaJualanSebenar: 13.5,
+      sasaranKuantitiStandard: 1200,
+      kuantitiSebenarDijual: 1200,
+      currency: "RM",
+      usernameLogMasuk: "admin",
+      kataLaluanLogMasuk: "",
+    },
+    bahanMentah: [
+      {
+        id: "ksk-bm1",
+        nama: "Basmati Rice & Ghee Butter",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.35,
+        stdHargaPerUnit: 3.5,
+        sebenarKuantitiJumlah: 430,
+        sebenarHargaPerUnit: 3.6,
+      },
+      {
+        id: "ksk-bm2",
+        nama: "Fresh Poultry & Braised Beef",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.5,
+        stdHargaPerUnit: 4.8,
+        sebenarKuantitiJumlah: 610,
+        sebenarHargaPerUnit: 4.9,
+      },
+      {
+        id: "ksk-bm3",
+        nama: "Traditional Spices & Seasoning",
+        unit: "servings",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 0.8,
+        sebenarKuantitiJumlah: 1200,
+        sebenarHargaPerUnit: 0.85,
+      },
+      {
+        id: "ksk-bm4",
+        nama: "Gourmet Salad & Side Dishes",
+        unit: "servings",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 1.1,
+        sebenarKuantitiJumlah: 1200,
+        sebenarHargaPerUnit: 1.1,
+      },
+    ],
+    buruhLangsung: [
+      {
+        id: "ksk-bl1",
+        nama: "Executive Catering Chef",
+        stdJamPerUnit: 0.025,
+        stdKadarPerJam: 22,
+        sebenarJamJumlah: 30,
+        sebenarKadarPerJam: 22,
+      },
+      {
+        id: "ksk-bl2",
+        nama: "Kitchen Prep & Banquet Servers",
+        stdJamPerUnit: 0.03,
+        stdKadarPerJam: 14,
+        sebenarJamJumlah: 38,
+        sebenarKadarPerJam: 14.5,
+      },
+    ],
+    overheadBerubah: [
+      {
+        id: "ksk-ob1",
+        nama: "Eco Catering Containers & Drink Pack",
+        stdKosPerUnit: 0.8,
+        sebenarKosJumlah: 980,
+      },
+      {
+        id: "ksk-ob2",
+        nama: "Commercial Heavy Kitchen Gas",
+        stdKosPerUnit: 0.25,
+        sebenarKosJumlah: 310,
+      },
+    ],
+    overheadTetap: [
+      {
+        id: "ksk-ot1",
+        nama: "Central Commercial Kitchen Lease",
+        stdKosMingguan: 400,
+        sebenarKosJumlah: 400,
+      },
+      {
+        id: "ksk-ot2",
+        nama: "Delivery Van Maintenance & Fuel",
+        stdKosMingguan: 120,
+        sebenarKosJumlah: 130,
+      },
+    ],
+  },
+  {
+    id: "bakeri-manis-kasturi",
+    namaPerniagaan: "Sweet Haven Artisan Bakery",
+    namaSyarikat: "Sweet Haven Artisan Bakery",
+    namaProduk: "Moist Chocolate Fudge Cake",
+    konfigurasi: {
+      namaSyarikat: "Sweet Haven Artisan Bakery",
+      namaProduk: "Moist Chocolate Fudge Cake",
+      unitProduk: "cakes",
+      hargaJualanStandard: 45,
+      hargaJualanSebenar: 45,
+      sasaranKuantitiStandard: 150,
+      kuantitiSebenarDijual: 140,
+      currency: "RM",
+      usernameLogMasuk: "admin",
+      kataLaluanLogMasuk: "",
+    },
+    bahanMentah: [
+      {
+        id: "bmk-bm1",
+        nama: "Superfine Flour & Dutch Cocoa Powder",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.75,
+        stdHargaPerUnit: 4.5,
+        sebenarKuantitiJumlah: 110,
+        sebenarHargaPerUnit: 4.6,
+      },
+      {
+        id: "bmk-bm2",
+        nama: "European Pure Butter",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.55,
+        stdHargaPerUnit: 9,
+        sebenarKuantitiJumlah: 80,
+        sebenarHargaPerUnit: 9.25,
+      },
+      {
+        id: "bmk-bm3",
+        nama: "Dark Chocolate Compound & Ganache",
+        unit: "lbs",
+        stdKuantitiPerUnit: 0.45,
+        stdHargaPerUnit: 8,
+        sebenarKuantitiJumlah: 65,
+        sebenarHargaPerUnit: 8,
+      },
+      {
+        id: "bmk-bm4",
+        nama: "Grade A Organic Eggs & Whole Milk",
+        unit: "sets",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 3.2,
+        sebenarKuantitiJumlah: 140,
+        sebenarHargaPerUnit: 3.3,
+      },
+    ],
+    buruhLangsung: [
+      {
+        id: "bmk-bl1",
+        nama: "Master Pastry Chef / Baker",
+        stdJamPerUnit: 0.4,
+        stdKadarPerJam: 20,
+        sebenarJamJumlah: 58,
+        sebenarKadarPerJam: 20,
+      },
+      {
+        id: "bmk-bl2",
+        nama: "Cake Decorator & Packaging",
+        stdJamPerUnit: 0.2,
+        stdKadarPerJam: 14,
+        sebenarJamJumlah: 30,
+        sebenarKadarPerJam: 14,
+      },
+    ],
+    overheadBerubah: [
+      {
+        id: "bmk-ob1",
+        nama: "Premium Window Cake Box & Gold Base",
+        stdKosPerUnit: 3.5,
+        sebenarKosJumlah: 500,
+      },
+      {
+        id: "bmk-ob2",
+        nama: "Industrial Convection Oven Power",
+        stdKosPerUnit: 1.2,
+        sebenarKosJumlah: 175,
+      },
+    ],
+    overheadTetap: [
+      {
+        id: "bmk-ot1",
+        nama: "Bakery Storefront & Kitchen Rent",
+        stdKosMingguan: 450,
+        sebenarKosJumlah: 450,
+      },
+      {
+        id: "bmk-ot2",
+        nama: "Industrial Mixer & Chiller Depreciation",
+        stdKosMingguan: 85,
+        sebenarKosJumlah: 85,
+      },
+    ],
+  },
+  {
+    id: "butik-anggun-sutera",
+    namaPerniagaan: "Elegance Silk Boutique",
+    namaSyarikat: "Elegance Silk Boutique",
+    namaProduk: "Exclusive Silk Evening Gown",
+    konfigurasi: {
+      namaSyarikat: "Elegance Silk Boutique",
+      namaProduk: "Exclusive Silk Evening Gown",
+      unitProduk: "dresses",
+      hargaJualanStandard: 120,
+      hargaJualanSebenar: 120,
+      sasaranKuantitiStandard: 80,
+      kuantitiSebenarDijual: 85,
+      currency: "RM",
+      usernameLogMasuk: "admin",
+      kataLaluanLogMasuk: "",
+    },
+    bahanMentah: [
+      {
+        id: "bas-bm1",
+        nama: "Grade A Silk Crepe Fabric (4 yds)",
+        unit: "yards",
+        stdKuantitiPerUnit: 4,
+        stdHargaPerUnit: 12,
+        sebenarKuantitiJumlah: 345,
+        sebenarHargaPerUnit: 12,
+      },
+      {
+        id: "bas-bm2",
+        nama: "Concealed Zippers, Thread & Interfacing",
+        unit: "sets",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 4.5,
+        sebenarKuantitiJumlah: 85,
+        sebenarHargaPerUnit: 4.8,
+      },
+      {
+        id: "bas-bm3",
+        nama: "Handcrafted Crystals & Beads",
+        unit: "sets",
+        stdKuantitiPerUnit: 1,
+        stdHargaPerUnit: 12,
+        sebenarKuantitiJumlah: 85,
+        sebenarHargaPerUnit: 12.5,
+      },
+    ],
+    buruhLangsung: [
+      {
+        id: "bas-bl1",
+        nama: "Master Pattern Cutter & Draper",
+        stdJamPerUnit: 0.5,
+        stdKadarPerJam: 24,
+        sebenarJamJumlah: 43,
+        sebenarKadarPerJam: 24,
+      },
+      {
+        id: "bas-bl2",
+        nama: "Fine Couture Seamstress",
+        stdJamPerUnit: 1.5,
+        stdKadarPerJam: 18,
+        sebenarJamJumlah: 130,
+        sebenarKadarPerJam: 18,
+      },
+      {
+        id: "bas-bl3",
+        nama: "Hand Beading & Finishing Artisan",
+        stdJamPerUnit: 0.75,
+        stdKadarPerJam: 16,
+        sebenarJamJumlah: 65,
+        sebenarKadarPerJam: 16,
+      },
+    ],
+    overheadBerubah: [
+      {
+        id: "bas-ob1",
+        nama: "Signature Garment Bags & Hangers",
+        stdKosPerUnit: 4,
+        sebenarKosJumlah: 345,
+      },
+      {
+        id: "bas-ob2",
+        nama: "Sewing Machine Tooling & Needles",
+        stdKosPerUnit: 0.8,
+        sebenarKosJumlah: 70,
+      },
+    ],
+    overheadTetap: [
+      {
+        id: "bas-ot1",
+        nama: "Weekly Boutique Studio & Fitting Suite Rent",
+        stdKosMingguan: 380,
+        sebenarKosJumlah: 380,
+      },
+      {
+        id: "bas-ot2",
+        nama: "Showroom Lighting & Climate Control",
+        stdKosMingguan: 110,
+        sebenarKosJumlah: 115,
+      },
+    ],
+  },
+];
+
+export const createEmptyBusinessDatabase = (
+  companyName: string,
+  username: string = "admin"
+) => {
+  const cleanCompanyName = companyName.trim() || "NEW ENTERPRISE";
+  const emptyConfig: KonfigurasiSistem = {
+    namaSyarikat: cleanCompanyName,
+    namaProduk: "Primary Product",
+    unitProduk: "units",
+    hargaJualanStandard: 0,
+    hargaJualanSebenar: 0,
+    sasaranKuantitiStandard: 0,
+    kuantitiSebenarDijual: 0,
+    currency: "RM",
+    language: "en",
+    usernameLogMasuk: username,
+    kataLaluanLogMasuk: "",
+  };
+
+  const emptyProduct: TemplatPerniagaan = {
+    id: `prod-${Date.now()}`,
+    namaPerniagaan: cleanCompanyName,
+    namaSyarikat: cleanCompanyName,
+    namaProduk: "Primary Product",
+    konfigurasi: emptyConfig,
+    bahanMentah: [],
+    buruhLangsung: [],
+    overheadBerubah: [],
+    overheadTetap: [],
+  };
+
+  return {
+    version: "2.0",
+    companyName: cleanCompanyName,
+    updatedAt: new Date().toISOString(),
+    templates: [emptyProduct],
+    activeProductId: emptyProduct.id,
+    config: emptyConfig,
+    bahanMentah: [],
+    buruhLangsung: [],
+    overheadBerubah: [],
+    overheadTetap: [],
+  };
+};
