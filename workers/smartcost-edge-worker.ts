@@ -12,6 +12,9 @@
  */
 
 export interface Env {
+  ASSETS?: {
+    fetch: (request: Request | string | URL, init?: RequestInit) => Promise<Response>;
+  };
   APP_COST_TIER?: string;
   FIRESTORE_PROJECT_ID?: string;
   FIRESTORE_DATABASE_ID?: string;
@@ -37,6 +40,7 @@ function isOriginAllowed(origin: string | null, env: Env): boolean {
       u.hostname === "localhost" ||
       u.hostname === "127.0.0.1" ||
       u.hostname.endsWith(".pages.dev") ||
+      u.hostname.endsWith(".workers.dev") ||
       u.hostname.endsWith(".run.app")
     ) {
       return true;
@@ -292,11 +296,50 @@ export default {
       );
     }
 
+    // 5. Serve SmartCost Frontend SPA & Static Assets from dist/ via Cloudflare Workers Assets binding
+    if (env.ASSETS) {
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status !== 404) {
+        const outHeaders = new Headers(assetResponse.headers);
+        applySecurityAndCorsHeaders(outHeaders, request, env);
+        return new Response(assetResponse.body, {
+          status: assetResponse.status,
+          statusText: assetResponse.statusText,
+          headers: outHeaders,
+        });
+      }
+
+      const acceptHeader = request.headers.get("Accept") || "";
+      const isFileRequest = /\.[a-z0-9]{1,8}$/i.test(url.pathname);
+      if (
+        (request.method === "GET" || request.method === "HEAD") &&
+        !isFileRequest &&
+        (acceptHeader.includes("text/html") || url.pathname === "/")
+      ) {
+        const indexUrl = new URL("/index.html", url.origin);
+        const indexReq = new Request(indexUrl.toString(), {
+          method: request.method,
+          headers: request.headers,
+        });
+        const indexResponse = await env.ASSETS.fetch(indexReq);
+        const outHeaders = new Headers(indexResponse.headers);
+        applySecurityAndCorsHeaders(outHeaders, request, env);
+        return new Response(indexResponse.body, {
+          status: indexResponse.status,
+          statusText: indexResponse.statusText,
+          headers: outHeaders,
+        });
+      }
+
+      return assetResponse;
+    }
+
+    // Fallback when Worker is deployed standalone without [assets] binding
     return jsonResponse(
       {
         service: "SmartCost Zero-Cost Edge Gateway",
         costTier: "RM0.00/bulan",
-        frontend: "Host dist/ on Cloudflare Pages Free",
+        frontend: "Host dist/ on Cloudflare Pages Free or bind [assets] directory = \"./dist\" in wrangler.toml",
         originConfigured: Boolean(env.ORIGIN_API_URL),
         capabilitiesUrl: "/api/edge/capabilities",
         logicalPool: pool,
