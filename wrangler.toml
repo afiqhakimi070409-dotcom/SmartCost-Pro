@@ -20,7 +20,7 @@ run_worker_first = ["/api/*", "/healthz"]
 # - Static assets from dist/ (index.html, assets/) are served directly at / and SPA routes
 # - /api/* and /healthz always run through workers/smartcost-edge-worker.ts first
 # - Optional Build env var if calling an external Express backend directly from browser:
-#   VITE_API_URL = "https://your-express-backend.example.com"
+#   VITE_API_BASE_URL = "https://your-backend.onrender.com"
 # - Or set Worker Secret ORIGIN_API_URL so the Worker proxies /api/* without CORS
 
 [vars]
@@ -36,5 +36,4 @@ FIRESTORE_DATABASE_ID = "ai-studio-remixsmartcostpr-940297e1-af61-42e5-8469-9bca
 # - DEV_ACCESS_SECRET   : (Secret, Optional) Developer Alt+D passkey secret (Google Developer Sign-In works even when omitted)
 # - ORIGIN_API_URL      : (Variable/Secret, Optional) External Express backend URL; leave empty for Cloudflare Standalone Edge Mode
 # - ALLOWED_ORIGINS     : (Variable, Optional) Comma-separated extra CORS origins (*.workers.dev & *.pages.dev are allowed automatically)
-# - VITE_API_URL        : (Build Env Var, Optional) Leave empty for same-origin Worker; set only if calling external Express directly from browser
-# - VITE_API_BASE_URL   : (Build Env Var, Optional) Alias for VITE_API_URL
+# - VITE_API_BASE_URL   : (Build Env Var, Optional) Leave empty for same-origin Worker; set to Render/Express URL if hosting backend separately

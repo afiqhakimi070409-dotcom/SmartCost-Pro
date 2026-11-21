@@ -99,6 +99,26 @@ export function isNotFoundError(err: any): boolean {
 }
 
 /**
+ * Detects if Gemini API rejected the configured GEMINI_API_KEY (invalid, expired, or blocked/denied).
+ */
+export function isGeminiKeyRejectedError(err: any): boolean {
+  if (!err) return false;
+  const statusNum = Number(err?.status || err?.statusCode || 0);
+  if (statusNum === 401 || statusNum === 403) {
+    return true;
+  }
+  const combined = `${err?.message || ""} ${err?.code || ""} ${err?.status || ""}`.toLowerCase();
+  return (
+    combined.includes("api_key_invalid") ||
+    combined.includes("api key not valid") ||
+    combined.includes("api_key_service_blocked") ||
+    combined.includes("permission_denied") ||
+    combined.includes("unauthenticated") ||
+    combined.includes("invalid api key")
+  );
+}
+
+/**
  * Detects if an API error is a 400 INVALID_ARGUMENT error mentioning thinking configuration.
  */
 export function isThinkingError(err: any): boolean {
@@ -273,6 +293,7 @@ function isAllowedCorsOrigin(origin: string | undefined, reqHostHeader?: string)
       parsed.hostname === "127.0.0.1" ||
       parsed.hostname.endsWith(".pages.dev") ||
       parsed.hostname.endsWith(".workers.dev") ||
+      parsed.hostname.endsWith(".onrender.com") ||
       parsed.hostname.endsWith(".run.app")
     ) {
       return true;
@@ -377,7 +398,7 @@ app.use((req, res, next) => {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://*.workers.dev https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss:",
+      "connect-src 'self' https://*.workers.dev https://*.pages.dev https://*.onrender.com https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com wss:",
       "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
       "frame-ancestors 'self' https://aistudio.google.com https://*.google.com https://*.googleusercontent.com",
       "object-src 'none'",
@@ -3553,7 +3574,13 @@ app.post("/api/mrcost/chat", async (req, res) => {
                 break roundLoop;
               }
             } catch (chainErr: any) {
+              if (chainErr && typeof chainErr === "object") {
+                chainErr._modelTried = model;
+              }
               streamLastError = chainErr;
+              if (isGeminiKeyRejectedError(chainErr)) {
+                break roundLoop;
+              }
             }
           }
         }
@@ -3753,7 +3780,13 @@ app.post("/api/mrcost/chat", async (req, res) => {
             break nonStreamRoundLoop;
           }
         } catch (chainErr: any) {
+          if (chainErr && typeof chainErr === "object") {
+            chainErr._modelTried = model;
+          }
           nonStreamLastError = chainErr;
+          if (isGeminiKeyRejectedError(chainErr)) {
+            break nonStreamRoundLoop;
+          }
         }
       }
     }
@@ -3803,36 +3836,52 @@ app.post("/api/mrcost/chat", async (req, res) => {
     }
 
     const isMissingKey = error instanceof MissingApiKeyError;
-    const rawStatus = Number(error?.status || (isMissingKey ? 503 : 503));
+    const isKeyRejected = !isMissingKey && isGeminiKeyRejectedError(error);
+    const rawStatus = Number(error?.status || (isMissingKey ? 503 : (isKeyRejected ? 403 : 503)));
     const httpStatus = rawStatus >= 400 && rawStatus <= 599 ? rawStatus : 503;
+    const modelTried = typeof error?._modelTried === "string" ? error._modelTried : (isMissingKey ? "none" : undefined);
+
     const errCode = isMissingKey
       ? "AI_NOT_CONFIGURED"
+      : isKeyRejected
+      ? (httpStatus === 403 ? "PERMISSION_DENIED" : "API_KEY_INVALID")
       : (httpStatus === 429 ? "RESOURCE_EXHAUSTED" : "UPSTREAM_AI_ERROR");
 
-    const friendlyMessage = isMissingKey
-      ? (normalizedLang === "en"
-          ? "AI API key (GEMINI_API_KEY) is not configured on the Express server."
-          : "Kunci API AI (GEMINI_API_KEY) belum ditetapkan pada pelayan Express.")
-      : (httpStatus === 429
-          ? (normalizedLang === "en"
-              ? "AI service quota temporarily reached (HTTP 429). Please retry in a moment."
-              : "Had kuota perkhidmatan AI dicapai buat sementara waktu (HTTP 429). Sila cuba sebentar lagi.")
-          : (normalizedLang === "en"
-              ? "Mr. Cost is currently busy, please try again shortly."
-              : "Mr Cost sedang sibuk, sila cuba lagi sebentar."));
+    const friendlyMessage =
+      isMissingKey || isKeyRejected
+        ? (normalizedLang === "en"
+            ? "AI feature is not connected yet. Please contact the administrator."
+            : "Fungsi AI belum disambungkan. Sila hubungi pentadbir.")
+        : httpStatus === 429
+        ? (normalizedLang === "en"
+            ? "AI service quota temporarily reached (HTTP 429). Please retry in a moment."
+            : "Had kuota perkhidmatan AI dicapai buat sementara waktu (HTTP 429). Sila cuba sebentar lagi.")
+        : (normalizedLang === "en"
+            ? "Mr. Cost is currently busy, please try again shortly."
+            : "Mr Cost sedang sibuk, sila cuba lagi sebentar.");
 
     const safeDetail = isMissingKey
-      ? "Missing GEMINI_API_KEY environment variable on Express origin."
+      ? "Missing GEMINI_API_KEY environment variable on backend server."
+      : isKeyRejected
+      ? `Gemini API key rejected (HTTP ${httpStatus}, ${errCode})`
       : `Express AI upstream HTTP ${httpStatus}`;
+
+    const errorPayload = {
+      error: friendlyMessage,
+      code: errCode,
+      httpStatus,
+      detail: safeDetail,
+      ...(modelTried ? { modelTried } : {}),
+    };
 
     if (res.headersSent) {
       if (!res.writableEnded && !res.destroyed) {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: friendlyMessage, code: errCode, httpStatus, detail: safeDetail })}\n\n`);
+        res.write(`event: error\ndata: ${JSON.stringify(errorPayload)}\n\n`);
         (res as unknown as { flush?: () => void }).flush?.();
         res.end();
       }
     } else {
-      res.status(httpStatus).json({ error: friendlyMessage, code: errCode, httpStatus, detail: safeDetail });
+      res.status(httpStatus).json(errorPayload);
     }
   }
 });

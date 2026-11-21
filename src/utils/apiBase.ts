@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * SmartCost API Origin Resolver
- * - Defaults to same-origin relative URLs ("") when hosted on Express/Cloud Run or custom domain Worker routes.
- * - Uses VITE_API_URL or VITE_API_BASE_URL (e.g. https://your-express-backend.example.com) when frontend
- *   is deployed separately on Cloudflare Workers / Cloudflare Pages.
+ * - Defaults to same-origin relative URLs ("") when hosted on Express/Cloud Run or same-origin Cloudflare Worker.
+ * - Uses VITE_API_BASE_URL (e.g. https://your-backend.onrender.com) when frontend on Cloudflare
+ *   connects to a separate backend server.
  */
 
 function isLocalHostName(hostname: string): boolean {
@@ -22,7 +22,7 @@ function isLocalHostName(hostname: string): boolean {
 
 export function getApiBaseUrl(): string {
   const env = typeof import.meta !== "undefined" ? (import.meta as any).env : undefined;
-  let raw = String(env?.VITE_API_URL || env?.VITE_API_BASE_URL || "")
+  let raw = String(env?.VITE_API_BASE_URL || "")
     .trim()
     .replace(/^["']+|["']+$/g, "")
     .trim()

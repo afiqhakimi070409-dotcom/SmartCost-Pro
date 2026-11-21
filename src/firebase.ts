@@ -99,10 +99,15 @@ export function formatAuthErrorMessage(error: any, lang: "en" | "ms" = "ms"): st
       return lang === "en"
         ? "A previous login request was cancelled. Please click the sign-in button again."
         : "Permintaan log masuk sebelumnya telah dibatalkan atau bertindih. Sila klik semula butang log masuk.";
-    case "auth/unauthorized-domain":
+    case "auth/unauthorized-domain": {
+      const currentDomain =
+        typeof window !== "undefined" && window.location?.hostname
+          ? window.location.hostname
+          : "(domain semasa)";
       return lang === "en"
-        ? "This web domain is not yet authorized in Firebase Authentication. Please add this domain to Authorized Domains in your Firebase Console."
-        : "Domain web ini belum tersenarai dalam 'Authorized Domains' Firebase Authentication. Sila benarkan domain ini dalam Firebase Console.";
+        ? `Google sign-in failed because the current domain "${currentDomain}" is not authorized yet. Developer: add "${currentDomain}" in Firebase > Authentication > Settings > Authorized domains.`
+        : `Log masuk Google gagal kerana domain semasa "${currentDomain}" belum dibenarkan. Sila tambah "${currentDomain}" di Firebase > Authentication > Settings > Authorized domains.`;
+    }
     case "auth/network-request-failed":
       return lang === "en"
         ? "Network connection issue. Please check your internet connection and try again."

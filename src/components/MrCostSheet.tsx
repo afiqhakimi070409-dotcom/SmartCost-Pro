@@ -817,6 +817,7 @@ export default function MrCostSheet({
                   sseErr.httpStatus = errObjData.httpStatus;
                   sseErr.code = errObjData.code;
                   sseErr.detail = errObjData.detail;
+                  sseErr.modelTried = errObjData.modelTried;
                   throw sseErr;
                 }
               }
@@ -910,58 +911,87 @@ export default function MrCostSheet({
       if (activeDbIdRef.current === requestDbId) {
         setMessages((prev) => prev.filter((m) => m.id !== botMsgId || m.text.trim().length > 0));
 
-        const fallbackMsg = requestLang === "en"
-          ? "Mr. Cost is currently busy, please try again shortly."
-          : "Mr Cost sedang sibuk, sila cuba lagi sebentar.";
+        const isDeveloper = userRole === "developer";
+        const rawErrMessage = typeof err?.message === "string" ? err.message.trim() : "";
+        const lowerCombined = `${errCode || ""} ${rawErrMessage} ${errDetail || ""}`.toLowerCase();
+
+        const isKeyMissingOrRejected =
+          errCode === "AI_NOT_CONFIGURED" ||
+          errCode === "API_KEY_INVALID" ||
+          errCode === "PERMISSION_DENIED" ||
+          errCode === "UNAUTHENTICATED" ||
+          httpStatus === 503 ||
+          ((httpStatus === 400 || httpStatus === 401 || httpStatus === 403) &&
+            errCode !== "SESSION_UNAUTHORIZED" &&
+            (lowerCombined.includes("api_key") ||
+              lowerCombined.includes("api key") ||
+              lowerCombined.includes("gemini_api_key") ||
+              lowerCombined.includes("kunci api") ||
+              lowerCombined.includes("permission_denied") ||
+              lowerCombined.includes("unauthenticated")));
+
+        const aiNotConnectedMsg =
+          requestLang === "en"
+            ? "AI feature is not connected yet. Please contact the administrator."
+            : "Fungsi AI belum disambungkan. Sila hubungi pentadbir.";
+
+        const fallbackMsg =
+          requestLang === "en"
+            ? "Mr. Cost is currently busy, please try again shortly."
+            : "Mr Cost sedang sibuk, sila cuba lagi sebentar.";
 
         let cleanErrorMsg = fallbackMsg;
-        if (errCode === "AI_NOT_CONFIGURED" || httpStatus === 503) {
-          cleanErrorMsg =
-            typeof err?.message === "string" && err.message.trim()
-              ? err.message.trim()
-              : (requestLang === "en"
-                  ? "Mr. Cost AI key (GEMINI_API_KEY) is not configured on this Cloudflare deployment."
-                  : "Kunci API Mr Cost AI (GEMINI_API_KEY) belum ditetapkan pada deployment Cloudflare ini.");
+        if (isKeyMissingOrRejected) {
+          cleanErrorMsg = aiNotConnectedMsg;
         } else if (errCode === "SESSION_UNAUTHORIZED" || httpStatus === 401) {
           cleanErrorMsg =
-            typeof err?.message === "string" && err.message.trim()
-              ? err.message.trim()
-              : (requestLang === "en"
-                  ? "Your session has expired. Please sign in again to use Mr. Cost AI."
-                  : "Sesi anda telah tamat tempoh. Sila log masuk semula untuk menggunakan Mr. Cost AI.");
-        } else if (typeof err?.message === "string") {
-          const raw = err.message.trim();
-          const lowerRaw = raw.toLowerCase();
+            requestLang === "en"
+              ? "Your session has expired. Please sign in again to use Mr. Cost AI."
+              : "Sesi anda telah tamat tempoh. Sila log masuk semula untuk menggunakan Mr. Cost AI.";
+        } else if (httpStatus === 429 || errCode === "RESOURCE_EXHAUSTED") {
+          cleanErrorMsg =
+            requestLang === "en"
+              ? "AI quota limit reached temporarily. Please try again in a moment."
+              : "Had kuota perkhidmatan AI dicapai buat sementara waktu. Sila cuba sebentar lagi.";
+        } else if (rawErrMessage) {
+          const lowerRaw = rawErrMessage.toLowerCase();
+          const looksLikeNetwork =
+            lowerRaw.includes("failed to fetch") ||
+            lowerRaw.includes("network error") ||
+            lowerRaw.includes("networkerror") ||
+            lowerRaw.includes("load failed");
           const looksLikeHtmlOrStack =
-            raw.startsWith("<") ||
+            rawErrMessage.startsWith("<") ||
             lowerRaw.includes("<!doctype") ||
-            raw.includes("ApiError") ||
-            (raw.includes("{") && raw.includes("}"));
-          if (
-            raw &&
-            !looksLikeHtmlOrStack &&
-            !lowerRaw.includes("failed to fetch") &&
-            !lowerRaw.includes("network error") &&
-            !lowerRaw.includes("load failed")
-          ) {
-            cleanErrorMsg = raw;
-          } else if (lowerRaw.includes("failed to fetch") || lowerRaw.includes("network error") || lowerRaw.includes("load failed")) {
-            cleanErrorMsg =
-              requestLang === "en"
-                ? "Network error while reaching the AI endpoint. Check your internet connection or VITE_API_URL."
-                : "Ralat rangkaian semasa menghubungi perkhidmatan AI. Sila semak sambungan internet atau tetapan VITE_API_URL.";
+            rawErrMessage.includes("ApiError") ||
+            (rawErrMessage.includes("{") && rawErrMessage.includes("}"));
+
+          if (looksLikeNetwork) {
+            cleanErrorMsg = isDeveloper
+              ? (requestLang === "en"
+                  ? "Network error while reaching the AI endpoint. Check your internet connection or VITE_API_BASE_URL."
+                  : "Ralat rangkaian semasa menghubungi perkhidmatan AI. Sila semak sambungan internet atau tetapan VITE_API_BASE_URL.")
+              : (requestLang === "en"
+                  ? "Unable to reach the AI service right now. Please try again shortly."
+                  : "Tidak dapat menghubungi perkhidmatan AI buat masa ini. Sila cuba sebentar lagi.");
+          } else if (isDeveloper && !looksLikeHtmlOrStack) {
+            cleanErrorMsg = rawErrMessage;
+          } else if (!looksLikeHtmlOrStack && !lowerRaw.includes("http ") && !lowerRaw.includes("server error")) {
+            cleanErrorMsg = rawErrMessage;
           }
         }
 
-        const techParts = [
-          httpStatus ? `HTTP ${httpStatus}` : null,
-          errCode ? `Kod: ${errCode}` : null,
-          modelTried ? `Model: ${modelTried}` : null,
-          errDetail && errDetail !== cleanErrorMsg ? errDetail : null,
-        ].filter(Boolean);
+        const techParts = isDeveloper
+          ? [
+              httpStatus ? `HTTP ${httpStatus}` : null,
+              errCode ? `Kod: ${errCode}` : null,
+              modelTried ? `Model: ${modelTried}` : null,
+              errDetail && errDetail !== cleanErrorMsg ? errDetail : null,
+            ].filter(Boolean)
+          : [];
 
         setError(cleanErrorMsg);
-        setErrorTechDetail(techParts.length > 0 ? techParts.join(" · ") : null);
+        setErrorTechDetail(isDeveloper && techParts.length > 0 ? techParts.join(" · ") : null);
       }
     } finally {
       if (activeDbIdRef.current === requestDbId) {
@@ -1342,7 +1372,7 @@ export default function MrCostSheet({
             <div className="min-w-0 flex-1">
               <p className="font-bold text-xs">{lang === "en" ? "Connection Issue" : "Isu Sambungan AI"}</p>
               <p className="mt-0.5 leading-relaxed text-[11px]">{error}</p>
-              {errorTechDetail && (
+              {userRole === "developer" && errorTechDetail && (
                 <p className="mt-1.5 px-2 py-1 rounded bg-rose-100/80 border border-rose-200/80 font-mono text-[10px] text-rose-900 break-words">
                   {errorTechDetail}
                 </p>

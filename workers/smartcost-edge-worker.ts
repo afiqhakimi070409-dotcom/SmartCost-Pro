@@ -81,6 +81,7 @@ function isOriginAllowed(origin: string | null, env: Env, requestUrl?: URL): boo
       u.hostname === "127.0.0.1" ||
       u.hostname.endsWith(".pages.dev") ||
       u.hostname.endsWith(".workers.dev") ||
+      u.hostname.endsWith(".onrender.com") ||
       u.hostname.endsWith(".run.app")
     ) {
       return true;
@@ -1163,15 +1164,21 @@ export default {
           );
         }
 
+        const body = await readJsonBodySafe(request);
+        const lang = body.language === "en" ? "en" : "ms";
+
         const geminiApiKey = cleanEnvValue(env.GEMINI_API_KEY) || cleanEnvValue(env.GOOGLE_API_KEY);
         if (!geminiApiKey) {
           return jsonResponse(
             {
               error:
-                "Kunci API AI (GEMINI_API_KEY) belum ditetapkan pada Cloudflare Worker. Sila tetapkan secret GEMINI_API_KEY atau ORIGIN_API_URL dalam tetapan Cloudflare Dashboard.",
+                lang === "en"
+                  ? "AI feature is not connected yet. Please contact the administrator."
+                  : "Fungsi AI belum disambungkan. Sila hubungi pentadbir.",
               code: "AI_NOT_CONFIGURED",
               httpStatus: 503,
-              detail: "Cloudflare Worker environment secret GEMINI_API_KEY is not set.",
+              detail: "GEMINI_API_KEY is not set on Cloudflare Worker.",
+              modelTried: "none",
             },
             request,
             env,
@@ -1180,12 +1187,11 @@ export default {
           );
         }
 
-        const body = await readJsonBodySafe(request);
         const message = String(body.message || body.question || "").trim();
         if (!message) {
           return jsonResponse(
             {
-              error: "Sila masukkan soalan analisis kos.",
+              error: lang === "en" ? "Please enter a cost analysis inquiry." : "Sila masukkan soalan analisis kos.",
               code: "EMPTY_MESSAGE",
               httpStatus: 400,
             },
@@ -1195,8 +1201,6 @@ export default {
             { "X-SmartCost-Node": pool }
           );
         }
-
-        const lang = body.language === "en" ? "en" : "ms";
         const systemText =
           lang === "en"
             ? "You are Mr. Cost AI, a management cost accounting expert specializing in variance analysis, profit margin, break-even point (BEP), and pricing strategy for SmartCost. Answer accurately, concisely, and professionally."
@@ -1280,9 +1284,9 @@ export default {
               return jsonResponse(
                 {
                   error:
-                    lastStatus === 400 || lastCode === "API_KEY_INVALID"
-                      ? "Kunci API Gemini (GEMINI_API_KEY) tidak sah atau ditolak oleh Google AI."
-                      : "Akses API Gemini ditolak (HTTP 403). Sila semak kebenaran/billing GEMINI_API_KEY.",
+                    lang === "en"
+                      ? "AI feature is not connected yet. Please contact the administrator."
+                      : "Fungsi AI belum disambungkan. Sila hubungi pentadbir.",
                   code: lastCode,
                   httpStatus: lastStatus,
                   detail: lastDetail,
@@ -1508,7 +1512,7 @@ export default {
       return jsonResponse(
         {
           error:
-            "Ciri pentadbiran pelayan lanjutan ini hanya tersedia apabila pelayan backend utama (ORIGIN_API_URL / VITE_API_URL) disambungkan.",
+            "Ciri pentadbiran pelayan lanjutan ini hanya tersedia apabila pelayan backend utama (ORIGIN_API_URL / VITE_API_BASE_URL) disambungkan.",
           code: "ORIGIN_API_URL_NOT_CONFIGURED",
           edgeFallback: true,
           endpoint: url.pathname,
