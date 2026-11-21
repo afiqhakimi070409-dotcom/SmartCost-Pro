@@ -22,8 +22,21 @@ function isLocalHostName(hostname: string): boolean {
 
 export function getApiBaseUrl(): string {
   const env = typeof import.meta !== "undefined" ? (import.meta as any).env : undefined;
-  const raw = String(env?.VITE_API_URL || env?.VITE_API_BASE_URL || "").trim().replace(/\/+$/, "");
-  if (!raw) return "";
+  let raw = String(env?.VITE_API_URL || env?.VITE_API_BASE_URL || "")
+    .trim()
+    .replace(/^["']+|["']+$/g, "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!raw || raw === "/" || raw.startsWith("/api")) return "";
+
+  const lowerRaw = raw.toLowerCase();
+  if (lowerRaw === "null" || lowerRaw === "undefined" || lowerRaw === "none") {
+    return "";
+  }
+
+  if (!raw.includes("://") && /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(raw)) {
+    raw = `https://${raw}`;
+  }
 
   try {
     const parsed = new URL(raw);
@@ -39,7 +52,10 @@ export function getApiBaseUrl(): string {
       return "";
     }
     if (typeof window !== "undefined" && window.location) {
-      if (parsed.origin === window.location.origin) {
+      if (
+        parsed.origin === window.location.origin ||
+        lowerHost === window.location.hostname.toLowerCase()
+      ) {
         return "";
       }
       if (isLocalHostName(lowerHost) && !isLocalHostName(window.location.hostname)) {
@@ -64,6 +80,10 @@ export function apiUrl(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   const base = getApiBaseUrl();
   return base ? `${base}${cleanPath}` : cleanPath;
+}
+
+export function sameOriginApiUrl(path: string): string {
+  return path.startsWith("/") ? path : `/${path}`;
 }
 
 export function isEdgeStandaloneResponse(status: number, data: any): boolean {

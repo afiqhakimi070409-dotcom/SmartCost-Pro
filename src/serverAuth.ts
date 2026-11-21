@@ -1431,6 +1431,9 @@ export function verifySecretPasskeyHash(passkey: string, storedHash?: string): b
 }
 
 export function hasConfiguredDeveloperCredentials(): boolean {
+  if (String(process.env.DEV_ACCESS_SECRET || "").trim().length > 0) {
+    return true;
+  }
   const users = loadServerUsers();
   return users.some((u) => u.role === "developer" && Boolean(u.passwordHash));
 }
@@ -1516,6 +1519,37 @@ export function authenticateDeveloperEntry(params: {
       retryAfterSec: lockoutStatus.retryAfterSec,
       reasonCode: "LOCKED",
     };
+  }
+
+  // Verify against DEV_ACCESS_SECRET env var if configured
+  const envDevSecret = String(process.env.DEV_ACCESS_SECRET || "").trim();
+  if (envDevSecret) {
+    const expectedDevUser = String(process.env.DEV_USERNAME || "afiqhakimi070409").trim().toLowerCase();
+    const userMatches =
+      cleanUser === expectedDevUser ||
+      cleanUser === "developer" ||
+      (expectedDevUser === "afiqhakimi070409" && cleanUser === "afiqhakimi070409@gmail.com");
+    if (userMatches) {
+      const actualDigest = crypto.createHash("sha256").update(passkey, "utf-8").digest();
+      const expectedDigest = crypto.createHash("sha256").update(envDevSecret, "utf-8").digest();
+      if (crypto.timingSafeEqual(actualDigest, expectedDigest)) {
+        clearDevAuthFailures(lockoutAccountKey, ip);
+        return {
+          success: true,
+          status: 200,
+          reasonCode: "OK",
+          user: {
+            id: `dev_${expectedDevUser}`,
+            username: expectedDevUser,
+            fullName: "System Developer",
+            companyName: "DEVELOPER SANDBOX",
+            role: "developer",
+            email: "afiqhakimi070409@gmail.com",
+            dbKey: DEV_SANDBOX_DB_ID,
+          },
+        };
+      }
+    }
   }
 
   // Verify against hashed developer account stored in server_users.json
@@ -2290,6 +2324,16 @@ export function confirmPasswordReset(rawToken: string, newPassword: string): { s
 
 function getSessionSecret(): string {
   if (cachedSessionSecret) return cachedSessionSecret;
+
+  const envSecret = String(process.env.SESSION_SECRET || "").trim();
+  if (envSecret.length >= 32) {
+    cachedSessionSecret = envSecret;
+    return cachedSessionSecret;
+  }
+  if (envSecret.length > 0) {
+    cachedSessionSecret = crypto.createHash("sha256").update(envSecret, "utf-8").digest("hex");
+    return cachedSessionSecret;
+  }
 
   ensureDataDir();
   try {

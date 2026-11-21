@@ -62,10 +62,20 @@ function pickLogicalPool(): string {
   return chosen;
 }
 
-function isOriginAllowed(origin: string | null, env: Env): boolean {
+function cleanEnvValue(raw: string | undefined): string {
+  return String(raw || "")
+    .trim()
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
+}
+
+function isOriginAllowed(origin: string | null, env: Env, requestUrl?: URL): boolean {
   if (!origin) return false;
   try {
     const u = new URL(origin);
+    if (requestUrl && u.origin === requestUrl.origin) {
+      return true;
+    }
     if (
       u.hostname === "localhost" ||
       u.hostname === "127.0.0.1" ||
@@ -75,11 +85,27 @@ function isOriginAllowed(origin: string | null, env: Env): boolean {
     ) {
       return true;
     }
-    if (env.ALLOWED_ORIGINS) {
-      const list = env.ALLOWED_ORIGINS.split(",")
-        .map((s) => s.trim())
+    const rawAllowed = cleanEnvValue(env.ALLOWED_ORIGINS);
+    if (rawAllowed) {
+      const list = rawAllowed
+        .split(/[\s,]+/)
+        .map((s) => cleanEnvValue(s).replace(/\/+$/, ""))
         .filter(Boolean);
-      if (list.includes(origin)) return true;
+      for (const entry of list) {
+        if (entry === "*") return true;
+        if (entry === origin || entry.toLowerCase() === u.origin.toLowerCase()) return true;
+        if (entry.toLowerCase() === u.hostname.toLowerCase()) return true;
+        if (entry.startsWith("*.")) {
+          const suffix = entry.slice(1).toLowerCase();
+          if (u.hostname.toLowerCase().endsWith(suffix) || u.hostname.toLowerCase() === suffix.slice(1)) {
+            return true;
+          }
+        }
+        try {
+          const parsedEntry = new URL(entry.includes("://") ? entry : `https://${entry}`);
+          if (parsedEntry.hostname.toLowerCase() === u.hostname.toLowerCase()) return true;
+        } catch {}
+      }
     }
   } catch {
     return false;
@@ -97,14 +123,18 @@ function applySecurityAndCorsHeaders(headers: Headers, request: Request, env: En
   headers.set("X-SmartCost-Runtime", "Cloudflare-Workers-Free-Single-Serverless-Platform");
 
   const origin = request.headers.get("Origin");
-  if (origin && isOriginAllowed(origin, env)) {
+  let requestUrl: URL | undefined;
+  try {
+    requestUrl = new URL(request.url);
+  } catch {}
+  if (origin && isOriginAllowed(origin, env, requestUrl)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Vary", "Origin");
     headers.set("Access-Control-Allow-Credentials", "true");
     headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
     headers.set(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-SmartCost-Session, X-CSRF-Token"
+      "Content-Type, Authorization, X-SmartCost-Session, X-CSRF-Token, X-Requested-With"
     );
     headers.set(
       "Access-Control-Expose-Headers",
@@ -154,9 +184,10 @@ function randomTokenHex(byteLen = 16): string {
 }
 
 async function getHmacKey(env: Env): Promise<CryptoKey> {
+  const configuredSecret = cleanEnvValue(env.SESSION_SECRET);
   const secretSource =
-    (env.SESSION_SECRET && env.SESSION_SECRET.trim()) ||
-    `smartcost-edge-session-v1:${env.FIRESTORE_PROJECT_ID || "reflecting-booth-740ks"}:${env.FIRESTORE_DATABASE_ID || "default"}`;
+    configuredSecret ||
+    `smartcost-edge-session-v1:${cleanEnvValue(env.FIRESTORE_PROJECT_ID) || "reflecting-booth-740ks"}:${cleanEnvValue(env.FIRESTORE_DATABASE_ID) || "default"}`;
   const raw = new TextEncoder().encode(secretSource);
   return crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, [
     "sign",
@@ -217,8 +248,9 @@ function getCookieValue(request: Request, name: string): string | null {
 }
 
 function buildSessionCookieHeader(token: string, requestUrl: URL, maxAgeSec = SESSION_TTL_SEC): string {
-  const secureFlag = requestUrl.protocol === "https:" ? "; Secure" : "";
-  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secureFlag}`;
+  const isHttps = requestUrl.protocol === "https:";
+  const sameSiteAndSecurity = isHttps ? "SameSite=None; Secure; Partitioned" : "SameSite=Lax";
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; ${sameSiteAndSecurity}; Max-Age=${maxAgeSec}`;
 }
 
 async function resolveEdgeActor(request: Request, env: Env): Promise<EdgeSessionPayload | null> {
@@ -430,7 +462,7 @@ function isWorkerLocalHost(hostname: string): boolean {
 }
 
 function resolveUsableOriginUrl(rawOrigin: string | undefined, requestUrl: URL): URL | null {
-  const clean = String(rawOrigin || "").trim();
+  let clean = cleanEnvValue(rawOrigin);
   if (!clean) return null;
   const lowerClean = clean.toLowerCase();
   if (
@@ -445,13 +477,16 @@ function resolveUsableOriginUrl(rawOrigin: string | undefined, requestUrl: URL):
   ) {
     return null;
   }
+  if (!clean.includes("://") && /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(clean)) {
+    clean = `https://${clean}`;
+  }
   try {
     const parsed = new URL(clean);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
     const parsedHost = parsed.hostname.toLowerCase();
     const reqHost = requestUrl.hostname.toLowerCase();
-    // Prevent self-looping proxy back to the same Worker hostname
-    if (parsedHost === reqHost) return null;
+    // Prevent self-looping proxy back to the same Worker hostname or origin
+    if (parsedHost === reqHost || parsed.origin === requestUrl.origin) return null;
     // Ignore localhost ORIGIN_API_URL when deployed on remote Cloudflare edge
     if (isWorkerLocalHost(parsedHost) && !isWorkerLocalHost(reqHost)) return null;
     return parsed;
@@ -495,8 +530,9 @@ export default {
 
     // 2. Non-secret Feature Flags
     const buildStandaloneFeaturesResponse = (fallbackUsed = false) => {
-      const geminiConfigured = Boolean((env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim());
-      const devSecretConfigured = Boolean((env.DEV_ACCESS_SECRET || env.DEV_PASSKEY || "").trim());
+      const geminiConfigured = Boolean(cleanEnvValue(env.GEMINI_API_KEY) || cleanEnvValue(env.GOOGLE_API_KEY));
+      const devSecretConfigured = Boolean(cleanEnvValue(env.DEV_ACCESS_SECRET) || cleanEnvValue(env.DEV_PASSKEY));
+      const sessionSecretConfigured = Boolean(cleanEnvValue(env.SESSION_SECRET));
       return jsonResponse(
         {
           devEntryEnabled: true,
@@ -506,6 +542,7 @@ export default {
           originFallbackActive: fallbackUsed,
           aiConfigured: geminiConfigured,
           devSecretConfigured,
+          sessionSecretConfigured,
           edgeAuthMode: "cloudflare_edge_standalone",
         },
         request,
@@ -524,8 +561,9 @@ export default {
 
     // 3. Edge Capabilities Diagnostic
     if (url.pathname === "/api/edge/capabilities") {
-      const geminiConfigured = Boolean((env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim());
-      const devSecretConfigured = Boolean((env.DEV_ACCESS_SECRET || env.DEV_PASSKEY || "").trim());
+      const geminiConfigured = Boolean(cleanEnvValue(env.GEMINI_API_KEY) || cleanEnvValue(env.GOOGLE_API_KEY));
+      const devSecretConfigured = Boolean(cleanEnvValue(env.DEV_ACCESS_SECRET) || cleanEnvValue(env.DEV_PASSKEY));
+      const sessionSecretConfigured = Boolean(cleanEnvValue(env.SESSION_SECRET));
       return jsonResponse(
         {
           status: "OK",
@@ -533,6 +571,7 @@ export default {
           originConfigured: Boolean(usableOrigin),
           geminiDirectConfigured: geminiConfigured,
           devSecretConfigured,
+          sessionSecretConfigured,
           firestoreProjectId: env.FIRESTORE_PROJECT_ID || "reflecting-booth-740ks",
           edgeDirectEndpoints: [
             "GET /healthz",
@@ -915,7 +954,7 @@ export default {
         }
 
         // Method (b): Cloudflare Worker Secret Developer Passkey Verification (No hardcoded password)
-        const configuredDevSecret = (env.DEV_ACCESS_SECRET || env.DEV_PASSKEY || "").trim();
+        const configuredDevSecret = cleanEnvValue(env.DEV_ACCESS_SECRET) || cleanEnvValue(env.DEV_PASSKEY);
         const inputUsername = String(body.username || "").trim().toLowerCase();
         const inputPasskey = String(body.passkey ?? body.password ?? "");
 
@@ -933,8 +972,11 @@ export default {
         }
 
         if (configuredDevSecret) {
-          const expectedUsername = (env.DEV_USERNAME || "afiqhakimi070409").trim().toLowerCase();
-          const usernameOk = inputUsername === expectedUsername || inputUsername === "developer";
+          const expectedUsername = (cleanEnvValue(env.DEV_USERNAME) || "afiqhakimi070409").toLowerCase();
+          const usernameOk =
+            inputUsername === expectedUsername ||
+            inputUsername === "developer" ||
+            (expectedUsername === "afiqhakimi070409" && inputUsername === "afiqhakimi070409@gmail.com");
           const passkeyOk = await constantTimeTextEqual(inputPasskey, configuredDevSecret);
           if (!usernameOk || !passkeyOk) {
             return jsonResponse(
@@ -1121,7 +1163,7 @@ export default {
           );
         }
 
-        const geminiApiKey = (env.GEMINI_API_KEY || env.GOOGLE_API_KEY || "").trim();
+        const geminiApiKey = cleanEnvValue(env.GEMINI_API_KEY) || cleanEnvValue(env.GOOGLE_API_KEY);
         if (!geminiApiKey) {
           return jsonResponse(
             {
@@ -1192,12 +1234,14 @@ export default {
           for (const model of EDGE_MODEL_CHAIN) {
             lastModelTried = model;
             const geminiResp = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
-                geminiApiKey
-              )}`,
+              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
               {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-goog-api-key": geminiApiKey,
+                  "User-Agent": "aistudio-build",
+                },
                 body: JSON.stringify({
                   systemInstruction: { parts: [{ text: systemText }] },
                   contents,

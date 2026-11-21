@@ -56,7 +56,13 @@ import {
 } from "../utils/mrcostEngine";
 import { getAuthFetchHeaders, saveServerSessionToken } from "../utils/authSessionClient";
 import { auth } from "../firebase";
-import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
+import {
+  apiUrl,
+  getFetchCredentialsMode,
+  hasExternalApiBaseUrl,
+  isOriginUnavailableError,
+  sameOriginApiUrl,
+} from "../utils/apiBase";
 
 function safeMarkdownUrlTransform(url: string): string {
   const trimmed = (url || "").trim();
@@ -619,6 +625,45 @@ export default function MrCostSheet({
         return false;
       };
 
+      const fetchMrCostWithEdgeFallback = async (
+        headers: Record<string, string>,
+        payload: Record<string, any>
+      ): Promise<Response> => {
+        const primaryUrl = apiUrl("/api/mrcost/chat");
+        const localUrl = sameOriginApiUrl("/api/mrcost/chat");
+        try {
+          const resp = await fetch(primaryUrl, {
+            method: "POST",
+            credentials: getFetchCredentialsMode(),
+            headers,
+            body: JSON.stringify(payload),
+          });
+          if (
+            hasExternalApiBaseUrl() &&
+            primaryUrl !== localUrl &&
+            (resp.status === 502 || resp.status === 503 || resp.status === 504)
+          ) {
+            return await fetch(localUrl, {
+              method: "POST",
+              credentials: "same-origin",
+              headers,
+              body: JSON.stringify(payload),
+            });
+          }
+          return resp;
+        } catch (err) {
+          if (hasExternalApiBaseUrl() && primaryUrl !== localUrl && isOriginUnavailableError(err)) {
+            return await fetch(localUrl, {
+              method: "POST",
+              credentials: "same-origin",
+              headers,
+              body: JSON.stringify(payload),
+            });
+          }
+          throw err;
+        }
+      };
+
       const executeJsonFallback = async (attempts = 2): Promise<string> => {
         let lastErr: unknown;
         let recoveredOnce = false;
@@ -628,14 +673,9 @@ export default function MrCostSheet({
               "Content-Type": "application/json",
               "Accept": "application/json",
             });
-            let fallbackRes = await fetch(apiUrl("/api/mrcost/chat"), {
-              method: "POST",
-              credentials: getFetchCredentialsMode(),
-              headers: reqHeaders,
-              body: JSON.stringify({
-                ...basePayload,
-                stream: false,
-              }),
+            let fallbackRes = await fetchMrCostWithEdgeFallback(reqHeaders, {
+              ...basePayload,
+              stream: false,
             });
 
             if (fallbackRes.status === 403 && !recoveredOnce) {
@@ -645,14 +685,9 @@ export default function MrCostSheet({
                   "Content-Type": "application/json",
                   "Accept": "application/json",
                 });
-                fallbackRes = await fetch(apiUrl("/api/mrcost/chat"), {
-                  method: "POST",
-                  credentials: getFetchCredentialsMode(),
-                  headers: retryHeaders,
-                  body: JSON.stringify({
-                    ...basePayload,
-                    stream: false,
-                  }),
+                fallbackRes = await fetchMrCostWithEdgeFallback(retryHeaders, {
+                  ...basePayload,
+                  stream: false,
                 });
               }
             }
@@ -692,14 +727,9 @@ export default function MrCostSheet({
           "Content-Type": "application/json",
           "Accept": "text/event-stream, application/json",
         });
-        let response = await fetch(apiUrl("/api/mrcost/chat"), {
-          method: "POST",
-          credentials: getFetchCredentialsMode(),
-          headers: streamHeaders,
-          body: JSON.stringify({
-            ...basePayload,
-            stream: true,
-          }),
+        let response = await fetchMrCostWithEdgeFallback(streamHeaders, {
+          ...basePayload,
+          stream: true,
         });
 
         if (response.status === 403) {
@@ -708,14 +738,9 @@ export default function MrCostSheet({
               "Content-Type": "application/json",
               "Accept": "text/event-stream, application/json",
             });
-            response = await fetch(apiUrl("/api/mrcost/chat"), {
-              method: "POST",
-              credentials: getFetchCredentialsMode(),
-              headers: retryHeaders,
-              body: JSON.stringify({
-                ...basePayload,
-                stream: true,
-              }),
+            response = await fetchMrCostWithEdgeFallback(retryHeaders, {
+              ...basePayload,
+              stream: true,
             });
           }
         }

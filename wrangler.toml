@@ -30,9 +30,11 @@ FIRESTORE_DATABASE_ID = "ai-studio-remixsmartcostpr-940297e1-af61-42e5-8469-9bca
 # Optional comma-separated custom frontend origins allowed by CORS:
 # ALLOWED_ORIGINS = "https://smartcost.yourdomain.com"
 
-# Encrypted Secrets (NEVER commit real values — set via Cloudflare Dashboard or `npx wrangler secret put`):
-# - ORIGIN_API_URL    : (Optional) URL of your Express origin server (e.g. Cloud Run / Render / Railway / VPS)
-# - GEMINI_API_KEY    : (Required for Mr Cost AI when ORIGIN_API_URL is unset) Server-side Gemini API key
-# - SESSION_SECRET    : Recommended 64-char random hex string for signing Worker HMAC edge session cookies
-# - DEV_ACCESS_SECRET : (Optional) Developer Alt+D passkey secret for standalone Cloudflare mode (or use Google Developer sign-in)
-# - DEV_USERNAME      : (Optional, defaults to afiqhakimi070409) Developer username paired with DEV_ACCESS_SECRET
+# Encrypted Secrets & Variables (NEVER commit real values — set via Cloudflare Dashboard -> Settings -> Variables and Secrets):
+# - GEMINI_API_KEY      : (Secret) Server-side Gemini API key for Mr Cost AI (/api/mrcost/chat)
+# - SESSION_SECRET      : (Secret) Random 64-char hex string for HMAC-SHA256 session tokens (auto-falls back if omitted during initial test)
+# - DEV_ACCESS_SECRET   : (Secret, Optional) Developer Alt+D passkey secret (Google Developer Sign-In works even when omitted)
+# - ORIGIN_API_URL      : (Variable/Secret, Optional) External Express backend URL; leave empty for Cloudflare Standalone Edge Mode
+# - ALLOWED_ORIGINS     : (Variable, Optional) Comma-separated extra CORS origins (*.workers.dev & *.pages.dev are allowed automatically)
+# - VITE_API_URL        : (Build Env Var, Optional) Leave empty for same-origin Worker; set only if calling external Express directly from browser
+# - VITE_API_BASE_URL   : (Build Env Var, Optional) Alias for VITE_API_URL

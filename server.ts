@@ -260,10 +260,14 @@ const isProduction =
   Boolean(process.env.K_REVISION) ||
   (fs.existsSync(path.join(distPath, "index.html")) && process.env.NODE_ENV !== "development");
 
-function isAllowedCorsOrigin(origin: string | undefined): boolean {
+function isAllowedCorsOrigin(origin: string | undefined, reqHostHeader?: string): boolean {
   if (!origin) return false;
   try {
     const parsed = new URL(origin);
+    const reqHostname = String(reqHostHeader || "").split(":")[0].trim().toLowerCase();
+    if (reqHostname && parsed.hostname.toLowerCase() === reqHostname) {
+      return true;
+    }
     if (
       parsed.hostname === "localhost" ||
       parsed.hostname === "127.0.0.1" ||
@@ -273,10 +277,25 @@ function isAllowedCorsOrigin(origin: string | undefined): boolean {
     ) {
       return true;
     }
-    const extra = process.env.ALLOWED_ORIGINS || "";
-    if (extra.trim()) {
-      const allowedList = extra.split(",").map((item) => item.trim()).filter(Boolean);
-      if (allowedList.includes(origin)) return true;
+    const extra = String(process.env.ALLOWED_ORIGINS || "").trim().replace(/^["']+|["']+$/g, "");
+    if (extra) {
+      const allowedList = extra
+        .split(/[\s,]+/)
+        .map((item) => item.trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, ""))
+        .filter(Boolean);
+      for (const entry of allowedList) {
+        if (entry === "*") return true;
+        if (entry === origin || entry.toLowerCase() === parsed.origin.toLowerCase()) return true;
+        if (entry.toLowerCase() === parsed.hostname.toLowerCase()) return true;
+        if (entry.startsWith("*.")) {
+          const suffix = entry.slice(1).toLowerCase();
+          if (parsed.hostname.toLowerCase().endsWith(suffix)) return true;
+        }
+        try {
+          const parsedEntry = new URL(entry.includes("://") ? entry : `https://${entry}`);
+          if (parsedEntry.hostname.toLowerCase() === parsed.hostname.toLowerCase()) return true;
+        } catch {}
+      }
     }
   } catch {
     return false;
@@ -329,14 +348,14 @@ app.use((req, res, next) => {
   }
 
   const origin = req.headers.origin;
-  if (origin && isAllowedCorsOrigin(origin)) {
+  if (origin && isAllowedCorsOrigin(origin, String(req.headers.host || ""))) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-SmartCost-Session, X-CSRF-Token"
+      "Content-Type, Authorization, X-SmartCost-Session, X-CSRF-Token, X-Requested-With"
     );
     res.setHeader(
       "Access-Control-Expose-Headers",
