@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import { KonfigurasiSistem, Language } from "../types";
 import { RingkasanKos } from "../utils/costCalculations";
+import { getTranslation, formatLocalizedNumber } from "../utils/i18n";
 import { 
   Coins, 
   TrendingUp, 
@@ -35,8 +36,9 @@ export const CashflowSheet: React.FC<CashflowSheetProps> = ({
   systemLang = "en",
 }) => {
   const isEn = systemLang === "en";
+  const t = getTranslation(systemLang);
   const currency = config.currency || "RM";
-  const f = (val: number) => `${currency} ${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const f = (val: number) => `${currency} ${formatLocalizedNumber(val, systemLang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // Corporate & SME Working Capital Parameters
   const [customerCreditDays, setCustomerCreditDays] = useState<number>(14);
@@ -66,7 +68,7 @@ export const CashflowSheet: React.FC<CashflowSheetProps> = ({
   const totalRecommendedLiquidity = workingCapitalNeeded + minimumSafetyReserve;
 
   // Cash runway
-  const cashRunwayWeeks = weeklyTotalOutflow > 0 ? (initialBankBalance / weeklyTotalOutflow).toFixed(1) : "N/A";
+  const cashRunwayWeeks = weeklyTotalOutflow > 0 ? (initialBankBalance / weeklyTotalOutflow).toFixed(1) : t.common.na;
 
   // 6-Week Cash Forecast Simulation
   const weeks = [1, 2, 3, 4, 5, 6];
@@ -96,7 +98,7 @@ export const CashflowSheet: React.FC<CashflowSheetProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider">
             <Coins className="w-3.5 h-3.5 text-blue-600" />
-            <span>Perbendaharaan Korporat & Modal Kerja Operasi</span>
+            <span>{t.cashflow.title}</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-900 tracking-tight">
             {isEn ? "Cash Flow & Working Capital Runway" : "Aliran Tunai & Modal Pusingan Operasi"}
@@ -325,13 +327,17 @@ export const CashflowSheet: React.FC<CashflowSheetProps> = ({
           <div className="space-y-1 text-xs">
             <p className="font-bold text-xs sm:text-sm">
               {initialBankBalance >= totalRecommendedLiquidity
-                ? (isEn ? "Kedudukan Modal Kerja Sihat & Kukuh" : "Kedudukan Modal Kerja Sihat & Kukuh")
-                : (isEn ? "Amaran Modal Kerja - Risiko Kekurangan Tunai" : "Amaran Modal Kerja - Risiko Kekurangan Tunai")}
+                ? t.cashflow.healthyTitle
+                : t.cashflow.warningTitle}
             </p>
             <p className="leading-relaxed opacity-90 text-[11px] sm:text-xs">
               {initialBankBalance >= totalRecommendedLiquidity
-                ? `Baki tunai semasa ${f(initialBankBalance)} mencukupi untuk menampung kitaran operasi (${f(workingCapitalNeeded)}) ditambah penampan keselamatan ${safetyBufferWeeks} minggu (${f(minimumSafetyReserve)}). Perniagaan memiliki ketahanan selama ${cashRunwayWeeks} minggu.`
-                : `Dengan terma kredit pelanggan ${customerCreditDays} hari, anda memerlukan sekurang-kurangnya ${f(totalRecommendedLiquidity)} rizab tunai untuk mengelakkan gangguan tunai operasi sebelum bayaran diterima.`}
+                ? (isEn
+                    ? `Current cash balance of ${f(initialBankBalance)} is sufficient to cover the operating cycle (${f(workingCapitalNeeded)}) plus a ${safetyBufferWeeks}-week safety buffer (${f(minimumSafetyReserve)}). Business runway stands at ${cashRunwayWeeks} weeks.`
+                    : `Baki tunai semasa ${f(initialBankBalance)} mencukupi untuk menampung kitaran operasi (${f(workingCapitalNeeded)}) ditambah penampan keselamatan ${safetyBufferWeeks} minggu (${f(minimumSafetyReserve)}). Perniagaan memiliki ketahanan selama ${cashRunwayWeeks} minggu.`)
+                : (isEn
+                    ? `With ${customerCreditDays}-day customer credit terms, you need at least ${f(totalRecommendedLiquidity)} in cash reserves to prevent operational cash shortages before payments are collected.`
+                    : `Dengan terma kredit pelanggan ${customerCreditDays} hari, anda memerlukan sekurang-kurangnya ${f(totalRecommendedLiquidity)} rizab tunai untuk mengelakkan gangguan tunai operasi sebelum bayaran diterima.`)}
             </p>
           </div>
         </div>
@@ -350,7 +356,7 @@ export const CashflowSheet: React.FC<CashflowSheetProps> = ({
             </p>
           </div>
           <div className="text-xs font-mono font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg">
-            {currency} (Ringgit Malaysia)
+            {currency} — {t.cashflow.currencyNote}
           </div>
         </div>
 

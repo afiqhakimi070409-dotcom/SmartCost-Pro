@@ -6,7 +6,14 @@
 import React, { useState } from "react";
 import { BahanMentah, BuruhLangsung, OverheadBerubah, OverheadTetap, KonfigurasiSistem, UserRole, ROLE_DEFINITIONS } from "../types";
 import { Coins, Utensils, HardHat, Clock, Building, TrendingUp, Sparkles, Copy, Check, Lock, CheckCircle2, Plus, Trash2, Layers, DollarSign, Target, Info, ArrowUpRight, ArrowDownRight } from "lucide-react";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import {
+  Language,
+  getTranslation,
+  getStoredLanguage,
+  formatLocalizedNumber,
+  formatUnitLabel,
+  getLocalizedRoleDef,
+} from "../utils/i18n";
 import { handleInputEnterKey } from "../utils/inputNavigation";
 import { formatCurrencyRM, resolveActualQty, resolveActualHours, resolveActualOverhead, calculateMaterialCost, calculateLaborCost } from "../utils/costCalculations";
 
@@ -90,14 +97,14 @@ export default function ActualSheet({
   const lang: Language = systemLang || config.language || getStoredLanguage();
   const t = getTranslation(lang);
   const f = (val: number) => formatCurrencyRM(val, config.currency);
-  const fNum = (val: number) => val.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  const unitLabel = config.unitProduk || (lang === "en" ? "units" : "batang");
+  const fNum = (val: number) => formatLocalizedNumber(val, lang, { maximumFractionDigits: 2 });
+  const unitLabel = formatUnitLabel(config.unitProduk, lang);
   const presetsBahan = lang === "en" ? presetsBahanEn : presetsBahanMs;
   const presetsBuruh = lang === "en" ? presetsBuruhEn : presetsBuruhMs;
   const presetsOHB = lang === "en" ? presetsOHBEn : presetsOHBMs;
   const presetsOHT = lang === "en" ? presetsOHTEn : presetsOHTMs;
 
-  const roleDef = ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin;
+  const roleDef = getLocalizedRoleDef(userRole, ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin, lang);
   const isReadOnly = readOnly || !roleDef.canEditDailyData;
   const [approvedStatus, setApprovedStatus] = useState<boolean>(false);
 
@@ -297,7 +304,7 @@ export default function ActualSheet({
   // Batch & Production settings
   const batchQtyStd = Math.max(1, config.kuantitiPengeluaranPiawai || 1);
   const batchQtyAct = Math.max(1, config.kuantitiPengeluaranSebenar || config.kuantitiPengeluaranPiawai || 1);
-  const batchUnit = config.unitPengeluaran || config.unitProduk || (lang === "en" ? "units" : "bekas");
+  const batchUnit = formatUnitLabel(config.unitPengeluaran || config.unitProduk, lang);
 
   // 1. Kos Bahan Mentah Sebenar = Kuantiti bahan sebenar × Harga sebenar bagi kelompok
   let totalBahanActual = 0;
@@ -385,7 +392,7 @@ export default function ActualSheet({
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               {approvedStatus 
-                ? (lang === "en" ? "Data Approved" : "Data Disahkan (Approved)") 
+                ? (lang === "en" ? "Data Approved" : "Data Disahkan") 
                 : (lang === "en" ? "Verify & Approve Staff Data" : "Sahkan & Semak Data Staf")}
             </button>
           )}
@@ -405,7 +412,7 @@ export default function ActualSheet({
               </span>
               <span className="text-slate-300">·</span>
               <span className="text-xs font-bold text-slate-700">
-                {config.namaSyarikat || "SCHOOL ENTERPRISE"}
+                {config.namaSyarikat || t.app.defaultCompany}
               </span>
             </div>
             <h2 className="screen-title text-slate-900 tracking-tight flex items-center gap-2.5">
@@ -460,9 +467,9 @@ export default function ActualSheet({
                 <span className="text-[11px] text-slate-500 font-sans block mt-0.5">/ {unitLabel}</span>
               </div>
               <div className="pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 font-mono flex justify-between">
-                <span>Total: {f(totalBahanActual)}</span>
+                <span>{t.actualSheet.totalLabel} {f(totalBahanActual)}</span>
                 <span className={actualBahanPerUnit <= stdBahanPerUnit ? "text-emerald-700 font-bold" : "text-rose-700 font-bold"}>
-                  Std: {f(stdBahanPerUnit)}
+                  {t.actualSheet.stdLabel} {f(stdBahanPerUnit)}
                 </span>
               </div>
             </div>
@@ -480,9 +487,9 @@ export default function ActualSheet({
                 <span className="text-[11px] text-slate-500 font-sans block mt-0.5">/ {unitLabel}</span>
               </div>
               <div className="pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 font-mono flex justify-between">
-                <span>Total: {f(totalBuruhActual)}</span>
+                <span>{t.actualSheet.totalLabel} {f(totalBuruhActual)}</span>
                 <span className={actualBuruhPerUnit <= stdBuruhPerUnit ? "text-emerald-700 font-bold" : "text-rose-700 font-bold"}>
-                  Std: {f(stdBuruhPerUnit)}
+                  {t.actualSheet.stdLabel} {f(stdBuruhPerUnit)}
                 </span>
               </div>
             </div>
@@ -500,9 +507,9 @@ export default function ActualSheet({
                 <span className="text-[11px] text-slate-500 font-sans block mt-0.5">/ {unitLabel}</span>
               </div>
               <div className="pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 font-mono flex justify-between">
-                <span>Total: {f(totalOHBActual)}</span>
+                <span>{t.actualSheet.totalLabel} {f(totalOHBActual)}</span>
                 <span className={actualOHBPerUnit <= stdOHBPerUnit ? "text-emerald-700 font-bold" : "text-rose-700 font-bold"}>
-                  Std: {f(stdOHBPerUnit)}
+                  {t.actualSheet.stdLabel} {f(stdOHBPerUnit)}
                 </span>
               </div>
             </div>
@@ -520,7 +527,7 @@ export default function ActualSheet({
                 <span className="text-[11px] text-emerald-700/80 font-sans block mt-0.5 font-medium">/ {unitLabel}</span>
               </div>
               <div className="pt-2 border-t border-emerald-200/60 text-[10px] font-mono flex justify-between items-center">
-                <span className="text-slate-500">vs Std {f(stdVarCostPerUnit)}</span>
+                <span className="text-slate-500">{t.actualSheet.vsStd} {f(stdVarCostPerUnit)}</span>
                 <span className={`font-bold flex items-center gap-0.5 ${isCostFavorable ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {isCostFavorable ? '-' : '+'}{f(Math.abs(costDiff))}
                   {isCostFavorable ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
@@ -700,7 +707,7 @@ export default function ActualSheet({
                         </div>
                         {/* Live variance tag */}
                         <div className="flex items-center justify-between text-[9px] px-1 font-mono">
-                          <span className="text-slate-400">Std: {fNum(item.stdKuantitiPerUnit)}</span>
+                          <span className="text-slate-400">{t.actualSheet.stdLabel} {fNum(item.stdKuantitiPerUnit)}</span>
                           {qtyDiff > 0.001 ? (
                             <span className="text-rose-600 font-bold whitespace-nowrap">+{qtyPercentDiff.toFixed(0)}% ⚠️</span>
                           ) : qtyDiff < -0.001 ? (
@@ -728,7 +735,7 @@ export default function ActualSheet({
                         </div>
                         {/* Live variance tag */}
                         <div className="flex items-center justify-between text-[9px] px-1 font-mono">
-                          <span className="text-slate-400 whitespace-nowrap">Std: {f(item.stdHargaPerUnit)}</span>
+                          <span className="text-slate-400 whitespace-nowrap">{t.actualSheet.stdLabel} {f(item.stdHargaPerUnit)}</span>
                           {priceDiff > 0.005 ? (
                             <span className="text-rose-600 font-bold whitespace-nowrap">+{config.currency}{priceDiff.toFixed(2)}</span>
                           ) : priceDiff < -0.005 ? (
@@ -876,10 +883,10 @@ export default function ActualSheet({
                       disabled={isReadOnly}
                       onChange={(e) => updateBahan(index, "nama", e.target.value)}
                       className="w-full font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-emerald-500 text-[16px] py-1 outline-hidden"
-                      placeholder="Nama Bahan"
+                      placeholder={t.actualSheet.matName}
                     />
                     <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1.5 mt-0.5">
-                      <span>Std: {item.stdKuantitiPerUnit} {item.unit}</span>
+                      <span>{t.actualSheet.stdLabel} {item.stdKuantitiPerUnit} {item.unit}</span>
                       <span>·</span>
                       <span>{f(item.stdHargaPerUnit)}/{item.unit}</span>
                     </div>
@@ -900,7 +907,7 @@ export default function ActualSheet({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[10px] font-mono font-bold text-slate-500 uppercase text-left">
-                        Kuantiti Sebenar ({item.unit})
+                        {t.actualSheet.actualQty} ({item.unit})
                       </label>
                       {qtyDiff > 0.001 ? (
                         <span className="text-rose-600 font-bold text-[9px] font-mono">+{qtyPercentDiff.toFixed(0)}% ⚠️</span>
@@ -922,7 +929,7 @@ export default function ActualSheet({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[10px] font-mono font-bold text-slate-500 uppercase text-left">
-                        Harga ({config.currency})
+                        {t.common.price} ({config.currency})
                       </label>
                       {priceDiff > 0.005 ? (
                         <span className="text-rose-600 font-bold text-[9px] font-mono">+{priceDiff.toFixed(2)}</span>
@@ -943,7 +950,7 @@ export default function ActualSheet({
                 </div>
 
                 <div className="flex items-center justify-between pt-2.5 border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs text-slate-500 font-medium">Jumlah Kos Sebenar</span>
+                  <span className="text-xs text-slate-500 font-medium">{t.actualSheet.actualTotal}</span>
                   <span className="font-mono font-bold text-slate-900 dark:text-slate-100 tabular-nums text-sm whitespace-nowrap">
                     {f(calculateMaterialCost(item.sebenarKuantitiJumlah, item.sebenarUnit || item.unit, item.sebenarHargaPerUnit, item.sebenarHargaUnit || item.hargaUnit || item.unit))}
                   </span>
@@ -960,7 +967,7 @@ export default function ActualSheet({
               </span>
 
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Nama Bahan</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.actualSheet.matName}</label>
                 <input
                   type="text"
                   placeholder={lang === "en" ? "e.g. Flour / Seasoning" : "Contoh: Kulit Popia / Minyak Masak"}
@@ -996,7 +1003,7 @@ export default function ActualSheet({
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Unit</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.common.unit}</label>
                   <input
                     type="text"
                     placeholder="kg"
@@ -1006,7 +1013,7 @@ export default function ActualSheet({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kuantiti</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.common.quantity}</label>
                   <input
                     type="number"
                     step="any"
@@ -1018,7 +1025,7 @@ export default function ActualSheet({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Harga (RM)</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.common.price} ({config.currency || "RM"})</label>
                   <input
                     type="number"
                     step="any"
@@ -1093,10 +1100,10 @@ export default function ActualSheet({
                         />
                       </td>
                       <td className="py-3.5 px-3 font-mono text-slate-700 dark:text-slate-300 text-[11px] text-right tabular-nums">
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{fNum(item.stdJamPerUnit)}j</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{fNum(item.stdJamPerUnit)}{t.common.hourShort}</span>
                         {Q_act > 1 && (
                           <span className="block text-[9px] text-slate-400 font-normal">
-                            {lang === "en" ? `Total: ${fNum(stdJamAllowed)}j` : `Jumlah: ${fNum(stdJamAllowed)}j`}
+                            {lang === "en" ? `Total: ${fNum(stdJamAllowed)}${t.common.hourShort}` : `Jumlah: ${fNum(stdJamAllowed)}${t.common.hourShort}`}
                           </span>
                         )}
                       </td>
@@ -1113,7 +1120,7 @@ export default function ActualSheet({
                             className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:bg-white focus:border-emerald-500 rounded-lg px-2.5 py-1.5 font-mono font-semibold text-slate-800 dark:text-slate-100 text-xs text-right tabular-nums transition-all outline-hidden focus:ring-2 focus:ring-emerald-500/10"
                           />
                           <div className="flex items-center justify-between text-[9px] px-1 font-mono text-slate-400">
-                            <span>Std: {fNum(item.stdJamPerUnit)}j</span>
+                            <span>{t.actualSheet.stdLabel} {fNum(item.stdJamPerUnit)}{t.common.hourShort}</span>
                             {jamDiff > 0.01 ? (
                               <span className="text-rose-600 font-bold">+{jamPercentDiff.toFixed(0)}% ⚠️</span>
                             ) : jamDiff < -0.01 ? (
@@ -1140,7 +1147,7 @@ export default function ActualSheet({
                             />
                           </div>
                           <div className="flex items-center justify-between text-[9px] px-1 font-mono text-slate-400">
-                            <span>Std: {config.currency}{item.stdKadarPerJam.toFixed(2)}</span>
+                            <span>{t.actualSheet.stdLabel} {config.currency}{item.stdKadarPerJam.toFixed(2)}</span>
                             {rateDiff > 0.005 ? (
                               <span className="text-rose-600 font-bold">+{rateDiff.toFixed(1)}</span>
                             ) : rateDiff < -0.005 ? (
@@ -1205,7 +1212,7 @@ export default function ActualSheet({
                       </div>
                     </td>
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 text-right tabular-nums">
-                      {newBuruh.stdJamPerUnit > 0 ? `${fNum(newBuruh.stdJamPerUnit)}j` : "-"}
+                      {newBuruh.stdJamPerUnit > 0 ? `${fNum(newBuruh.stdJamPerUnit)}${t.common.hourShort}` : "-"}
                     </td>
                     <td className="py-2.5 px-3">
                       <input
@@ -1271,12 +1278,12 @@ export default function ActualSheet({
                         disabled={isReadOnly}
                         onChange={(e) => updateBuruh(index, "nama", e.target.value)}
                         className="w-full font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-emerald-500 text-[16px] py-1 outline-hidden"
-                        placeholder="Nama Tugasan Buruh"
+                        placeholder={t.actualSheet.laborTask}
                       />
                       <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1.5 mt-0.5">
-                        <span>Std: {fNum(item.stdJamPerUnit)}j</span>
+                        <span>{t.actualSheet.stdLabel} {fNum(item.stdJamPerUnit)}{t.common.hourShort}</span>
                         <span>·</span>
-                        <span>{f(item.stdKadarPerJam)}/j</span>
+                        <span>{f(item.stdKadarPerJam)}/{t.common.hourShort}</span>
                       </div>
                     </div>
                     {!isReadOnly && (
@@ -1295,7 +1302,7 @@ export default function ActualSheet({
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-[10px] font-mono font-bold text-slate-500 uppercase text-left">
-                          Jam Sebenar (j)
+                          {t.actualSheet.actualHours} ({t.common.hourShort})
                         </label>
                         {jamDiff > 0.01 ? (
                           <span className="text-rose-600 font-bold text-[9px] font-mono">+{jamPercentDiff.toFixed(0)}% ⚠️</span>
@@ -1317,7 +1324,7 @@ export default function ActualSheet({
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-[10px] font-mono font-bold text-slate-500 uppercase text-left">
-                          Kadar ({config.currency}/j)
+                          {t.common.rate} ({config.currency}/{t.common.hourShort})
                         </label>
                         {rateDiff > 0.005 ? (
                           <span className="text-rose-600 font-bold text-[9px] font-mono">+{rateDiff.toFixed(1)}</span>
@@ -1338,7 +1345,7 @@ export default function ActualSheet({
                   </div>
 
                   <div className="flex items-center justify-between pt-2.5 border-t border-slate-200/60 dark:border-slate-800">
-                    <span className="text-xs text-slate-500 font-medium">Jumlah Kos Buruh</span>
+                    <span className="text-xs text-slate-500 font-medium">{t.actualSheet.totalLabel} {t.common.directLabor}</span>
                     <span className="font-mono font-bold text-slate-900 dark:text-slate-100 tabular-nums text-sm whitespace-nowrap">
                       {f(calculateLaborCost(item.sebenarJamJumlah, item.sebenarUnitMasa || item.unitMasa || "jam", item.sebenarKadarPerJam))}
                     </span>
@@ -1354,7 +1361,7 @@ export default function ActualSheet({
                 </span>
 
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Tugasan Buruh</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.actualSheet.laborTask}</label>
                   <input
                     type="text"
                     placeholder={lang === "en" ? "e.g. Cook / Packaging helper" : "Contoh: Tukang Masak / Pembungkus"}
@@ -1366,7 +1373,7 @@ export default function ActualSheet({
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Jam Sebenar</label>
+                    <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.actualSheet.actualHours}</label>
                     <input
                       type="number"
                       step="any"
@@ -1378,7 +1385,7 @@ export default function ActualSheet({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kadar ({config.currency}/j)</label>
+                    <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.common.rate} ({config.currency || "RM"}/{t.common.hourShort})</label>
                     <input
                       type="number"
                       step="any"
@@ -1469,7 +1476,7 @@ export default function ActualSheet({
                             />
                           </div>
                           <div className="flex items-center justify-between text-[9px] px-1 font-mono text-slate-400">
-                            <span>Std: {f(item.stdKosPerUnit)}</span>
+                            <span>{t.actualSheet.stdLabel} {f(item.stdKosPerUnit)}</span>
                             {ohbDiff > 0.01 ? (
                               <span className="text-rose-600 font-bold">+{ohPercentDiff.toFixed(0)}% ⚠️</span>
                             ) : ohbDiff < -0.01 ? (
@@ -1579,10 +1586,10 @@ export default function ActualSheet({
                         disabled={isReadOnly}
                         onChange={(e) => updateOHB(index, "nama", e.target.value)}
                         className="w-full font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-emerald-500 text-[16px] py-1 outline-hidden"
-                        placeholder="Nama Item Overhead"
+                        placeholder={t.actualSheet.varOhItem}
                       />
                       <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        Std: {f(item.stdKosPerUnit)} / unit
+                        {t.actualSheet.stdLabel} {f(item.stdKosPerUnit)} / {t.common.unitsDefault}
                       </div>
                     </div>
                     {!isReadOnly && (
@@ -1600,7 +1607,7 @@ export default function ActualSheet({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[10px] font-mono font-bold text-slate-500 uppercase text-left">
-                        Kos Sebenar ({config.currency})
+                        {t.actualSheet.actualCost} ({config.currency})
                       </label>
                       {ohbDiff > 0.01 ? (
                         <span className="text-rose-600 font-bold text-[9px] font-mono">+{ohPercentDiff.toFixed(0)}% ⚠️</span>
@@ -1629,7 +1636,7 @@ export default function ActualSheet({
                 </span>
 
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Item Overhead</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.actualSheet.varOhItem}</label>
                   <input
                     type="text"
                     placeholder={lang === "en" ? "e.g. Packaging / Utensils" : "Contoh: Kotak Makanan / Plastik"}
@@ -1640,7 +1647,7 @@ export default function ActualSheet({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kos Sebenar ({config.currency})</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.actualSheet.actualCost} ({config.currency})</label>
                   <input
                     type="number"
                     step="any"
@@ -1725,7 +1732,7 @@ export default function ActualSheet({
                           />
                         </div>
                         <div className="flex items-center justify-between text-[9px] px-1 font-mono text-slate-400">
-                          <span>Std: {f(item.stdKosMingguan)}</span>
+                          <span>{t.actualSheet.stdLabel} {f(item.stdKosMingguan)}</span>
                           {ohtDiff > 0.01 ? (
                             <span className="text-rose-600 font-bold">+{ohtPercentDiff.toFixed(0)}% ⚠️</span>
                           ) : ohtDiff < -0.01 ? (
@@ -1833,10 +1840,10 @@ export default function ActualSheet({
                       disabled={isReadOnly}
                       onChange={(e) => updateOHT(index, "nama", e.target.value)}
                       className="w-full font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-emerald-500 text-[16px] py-1 outline-hidden"
-                      placeholder="Nama Kos Tetap"
+                      placeholder={t.actualSheet.fixedOhItem}
                     />
                     <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                      Std Mingguan: {f(item.stdKosMingguan)}
+                      {t.actualSheet.stdWeeklyLabel} {f(item.stdKosMingguan)}
                     </div>
                   </div>
                   {!isReadOnly && (
@@ -1854,7 +1861,7 @@ export default function ActualSheet({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[10px] font-mono font-bold text-slate-500 uppercase text-left">
-                      Kos Sebenar Minggu Ini ({config.currency})
+                      {t.actualSheet.fixedOhActCost} ({config.currency})
                     </label>
                     {ohtDiff > 0.01 ? (
                       <span className="text-rose-600 font-bold text-[9px] font-mono">+{ohtPercentDiff.toFixed(0)}% ⚠️</span>
@@ -1883,7 +1890,7 @@ export default function ActualSheet({
               </span>
 
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Nama Kos Tetap</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.actualSheet.fixedOhItem}</label>
                 <input
                   type="text"
                   placeholder={lang === "en" ? "e.g. Stall Rental / License" : "Contoh: Sewa Tapak / Lesen"}
@@ -1894,7 +1901,7 @@ export default function ActualSheet({
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kos Sebenar ({config.currency})</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.actualSheet.fixedOhActCost} ({config.currency})</label>
                 <input
                   type="number"
                   step="any"

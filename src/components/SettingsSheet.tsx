@@ -65,6 +65,8 @@ import {
   getTranslation,
   setStoredLanguage,
   getStoredLanguage,
+  getLocalizedRoleDef,
+  formatUnitLabel,
 } from "../utils/i18n";
 import { handleInputEnterKey } from "../utils/inputNavigation";
 import { getStoredTheme, setStoredTheme } from "../utils/theme";
@@ -335,14 +337,20 @@ export default function SettingsSheet({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.manualSecret) {
-        setTwoFaMsg({ type: "err", text: data.error || "Gagal memulakan persediaan 2FA." });
+        setTwoFaMsg({
+          type: "err",
+          text: data.error || (currentLang === "en" ? "Failed to initialize 2FA setup." : "Gagal memulakan persediaan 2FA."),
+        });
         return;
       }
       setTwoFaPendingSecret(data.manualSecret);
       setTwoFaOtpUri(data.otpAuthUri || null);
       setTwoFaCodeInput("");
     } catch {
-      setTwoFaMsg({ type: "err", text: "Ralat sambungan pelayan." });
+      setTwoFaMsg({
+        type: "err",
+        text: currentLang === "en" ? "Server connection error." : "Ralat sambungan pelayan.",
+      });
     } finally {
       setTwoFaBusy(false);
     }
@@ -361,7 +369,10 @@ export default function SettingsSheet({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        setTwoFaMsg({ type: "err", text: data.error || "Kod 2FA tidak sah." });
+        setTwoFaMsg({
+          type: "err",
+          text: data.error || (currentLang === "en" ? "Invalid 2FA code." : "Kod 2FA tidak sah."),
+        });
         return;
       }
       setTwoFaEnabled(true);
@@ -373,7 +384,10 @@ export default function SettingsSheet({
         text: currentLang === "en" ? "Two-Factor Authentication (2FA) enabled." : "Pengesahan Dua Faktor (2FA) berjaya diaktifkan.",
       });
     } catch {
-      setTwoFaMsg({ type: "err", text: "Ralat sambungan pelayan." });
+      setTwoFaMsg({
+        type: "err",
+        text: currentLang === "en" ? "Server connection error." : "Ralat sambungan pelayan.",
+      });
     } finally {
       setTwoFaBusy(false);
     }
@@ -395,7 +409,10 @@ export default function SettingsSheet({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        setTwoFaMsg({ type: "err", text: data.error || "Gagal menyahaktifkan 2FA." });
+        setTwoFaMsg({
+          type: "err",
+          text: data.error || (currentLang === "en" ? "Failed to disable 2FA." : "Gagal menyahaktifkan 2FA."),
+        });
         return;
       }
       setTwoFaEnabled(false);
@@ -406,15 +423,18 @@ export default function SettingsSheet({
         text: currentLang === "en" ? "Two-Factor Authentication (2FA) disabled." : "Pengesahan Dua Faktor (2FA) telah dinyahaktifkan.",
       });
     } catch {
-      setTwoFaMsg({ type: "err", text: "Ralat sambungan pelayan." });
+      setTwoFaMsg({
+        type: "err",
+        text: currentLang === "en" ? "Server connection error." : "Ralat sambungan pelayan.",
+      });
     } finally {
       setTwoFaBusy(false);
     }
   };
 
-  const currentLang: Language = localConfig.language || systemLang || "ms";
+  const currentLang: Language = localConfig.language || systemLang || "en";
   const t = getTranslation(currentLang);
-  const roleDef = ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin;
+  const roleDef = getLocalizedRoleDef(userRole, ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin, currentLang);
   const isAuthorizedDeveloper = Boolean(isRealDeveloperSuperuser);
   const isDeveloperActor = userRole === "developer" || isAuthorizedDeveloper;
 
@@ -542,6 +562,7 @@ export default function SettingsSheet({
           currentPassword: currentPasswordInput,
           newPassword,
           newUsername,
+          lang: currentLang,
         });
         if (!edgeRes.success && edgeRes.code === "NO_MANUAL_PASSWORD_SET" && newPassword.length >= 8) {
           edgeRes = await edgeLinkManual({
@@ -553,6 +574,7 @@ export default function SettingsSheet({
             email: currentUser?.email,
             role: currentUser?.role,
             dbKey: currentUser?.dbKey,
+            lang: currentLang,
           });
         }
         resolvedOk = edgeRes.success;
@@ -751,8 +773,9 @@ export default function SettingsSheet({
       if (!isAuthorizedDeveloper) {
         return (
           <PermissionDenied
-            userRole={userRole}
-            requiredRole="developer"
+            roleName={roleDef.title}
+            requiredPermission="developer"
+            lang={currentLang}
             onGoBack={() => setActiveSubpage(null)}
           />
         );
@@ -863,7 +886,7 @@ export default function SettingsSheet({
                         {businessForm.logoUrl ? (
                           <img
                             src={businessForm.logoUrl}
-                            alt="Logo Syarikat"
+                            alt={currentLang === "en" ? "Company Logo" : "Logo Syarikat"}
                             className="w-full h-full object-contain"
                           />
                         ) : (
@@ -902,7 +925,7 @@ export default function SettingsSheet({
                         )}
                       </div>
                       <p className="text-[10px] text-slate-400">
-                        PNG, JPG atau WEBP (Maks. 2MB)
+                        {currentLang === "en" ? "PNG, JPG or WEBP (Max 2MB)" : "PNG, JPG atau WEBP (Maks. 2MB)"}
                       </p>
                     </div>
                   </div>
@@ -923,7 +946,7 @@ export default function SettingsSheet({
                           onChange={(e) => setBusinessForm({ ...businessForm, companyName: e.target.value })}
                           onKeyDown={handleInputEnterKey}
                           disabled={!roleDef.canEditSettings}
-                          placeholder="cth: AMG SDN BHD / ABC FOODS ENTERPRISE"
+                          placeholder={currentLang === "en" ? "e.g. AMG SDN BHD / ABC FOODS ENTERPRISE" : "cth: AMG SDN BHD / ABC FOODS ENTERPRISE"}
                           className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:border-[#0b3c7a] outline-hidden"
                           required
                         />
@@ -945,7 +968,7 @@ export default function SettingsSheet({
                           onChange={(e) => setBusinessForm({ ...businessForm, businessRegNo: e.target.value })}
                           onKeyDown={handleInputEnterKey}
                           disabled={!roleDef.canEditSettings}
-                          placeholder="cth: 118934-V atau 202401001234"
+                          placeholder={currentLang === "en" ? "e.g. 118934-V or 202401001234" : "cth: 118934-V atau 202401001234"}
                           className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-medium text-slate-900 dark:text-white focus:border-[#0b3c7a] outline-hidden"
                           required
                         />
@@ -974,7 +997,7 @@ export default function SettingsSheet({
                       onChange={(e) => setBusinessForm({ ...businessForm, addressLine1: e.target.value })}
                       onKeyDown={handleInputEnterKey}
                       disabled={!roleDef.canEditSettings}
-                      placeholder="cth: NO 4, JALAN HARIMAU 18, TAMAN PERLING"
+                      placeholder={currentLang === "en" ? "e.g. NO 4, JALAN HARIMAU 18, TAMAN PERLING" : "cth: NO 4, JALAN HARIMAU 18, TAMAN PERLING"}
                       className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-900 dark:text-white focus:border-[#0b3c7a] outline-hidden"
                       required
                     />
@@ -1077,7 +1100,7 @@ export default function SettingsSheet({
                         onChange={(e) => setBusinessForm({ ...businessForm, phone1: e.target.value })}
                         onKeyDown={handleInputEnterKey}
                         disabled={!roleDef.canEditSettings}
-                        placeholder="604-6561234 atau 012-3456789"
+                        placeholder={currentLang === "en" ? "604-6561234 or 012-3456789" : "604-6561234 atau 012-3456789"}
                         className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-medium text-slate-900 dark:text-white focus:border-[#0b3c7a] outline-hidden"
                         required
                       />
@@ -1262,34 +1285,36 @@ export default function SettingsSheet({
         {activeSubpage === "company-info" && (
           <div className="space-y-6">
             {renderSubpageHeader(
-              t.settings.categories?.accountProfile || "AKAUN & PROFIL",
-              t.settings.items?.companyInfo || "Maklumat Syarikat",
-              t.settings.items?.companyInfoDesc || "Alamat premis, nombor pendaftaran dan maklumat perhubungan"
+              t.settings.categories?.accountProfile,
+              t.settings.items?.companyInfo,
+              t.settings.items?.companyInfoDesc
             )}
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div>
-                  <span className="text-slate-400 font-medium block">Nama Syarikat</span>
+                  <span className="text-slate-400 font-medium block">{t.generalSetup.companyName}</span>
                   <p className="font-bold text-slate-800 dark:text-slate-100 text-sm mt-1">
                     {localConfig.namaSyarikat || "SmartCost Enterprise"}
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium block">No. Pendaftaran Perniagaan</span>
+                  <span className="text-slate-400 font-medium block">{t.generalSetup.regNo}</span>
                   <p className="font-bold text-slate-800 dark:text-slate-100 text-sm mt-1">
                     {localConfig.generalSetup?.businessRegNo || "118934-V"}
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium block">Alamat Premis</span>
+                  <span className="text-slate-400 font-medium block">{t.generalSetup.address}</span>
                   <p className="font-medium text-slate-700 dark:text-slate-300 mt-1">
                     {localConfig.generalSetup?.addressLine1 || "No 4, Jalan Harimau 18, Taman Perling, Johor Bahru"}
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium block">Maklumat Perhubungan</span>
+                  <span className="text-slate-400 font-medium block">
+                    {currentLang === "en" ? "Contact Details" : "Maklumat Perhubungan"}
+                  </span>
                   <p className="font-medium text-slate-700 dark:text-slate-300 mt-1">
-                    Tel: {localConfig.generalSetup?.phone1 || "07-2345678"} | Emel: {localConfig.generalSetup?.email || "info@smartcost.my"}
+                    Tel: {localConfig.generalSetup?.phone1 || "07-2345678"} | {currentLang === "en" ? "Email" : "Emel"}: {localConfig.generalSetup?.email || "info@smartcost.my"}
                   </p>
                 </div>
               </div>
@@ -1311,9 +1336,9 @@ export default function SettingsSheet({
         {activeSubpage === "user-profile" && (
           <div className="space-y-6">
             {renderSubpageHeader(
-              t.settings.categories?.accountProfile || "AKAUN & PROFIL",
-              t.settings.items?.userProfile || "Profil Pengguna",
-              t.settings.items?.userProfileDesc || "Maklumat akaun pengguna aktif dan peranan semasa"
+              t.settings.categories?.accountProfile,
+              t.settings.items?.userProfile,
+              t.settings.items?.userProfileDesc
             )}
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
               <div className="flex items-center gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -1322,22 +1347,24 @@ export default function SettingsSheet({
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                    {currentUser?.fullName || currentUser?.username || "Pentadbir SmartCost"}
+                    {currentUser?.fullName || currentUser?.username || (currentLang === "en" ? "SmartCost Administrator" : "Pentadbir SmartCost")}
                   </h3>
                   <span className="inline-block mt-0.5 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-100 text-[#0b3c7a] dark:bg-sky-950 dark:text-sky-300 border border-blue-200 dark:border-sky-800">
-                    {userRole.toUpperCase()}
+                    {roleDef.title}
                   </span>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div>
-                  <span className="text-slate-400 font-medium block">Nama Pengguna</span>
+                  <span className="text-slate-400 font-medium block">{t.login.username}</span>
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-1 block">
                     {currentUser?.username || localConfig.usernameLogMasuk || "admin"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium block">Emel / Hubungan</span>
+                  <span className="text-slate-400 font-medium block">
+                    {currentLang === "en" ? "Email / Contact" : "Emel / Hubungan"}
+                  </span>
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-1 block">
                     {currentUser?.email || "admin@smartcost.my"}
                   </span>
@@ -1351,23 +1378,31 @@ export default function SettingsSheet({
         {activeSubpage === "account-info" && (
           <div className="space-y-6">
             {renderSubpageHeader(
-              t.settings.categories?.accountProfile || "AKAUN & PROFIL",
-              t.settings.items?.accountInfo || "Maklumat Akaun",
-              t.settings.items?.accountInfoDesc || "Status akaun, ruang kerja organisasi dan pangkalan data khusus"
+              t.settings.categories?.accountProfile,
+              t.settings.items?.accountInfo,
+              t.settings.items?.accountInfoDesc
             )}
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-400 block font-medium">Pangkalan Data Terasing</span>
+                  <span className="text-slate-400 block font-medium">
+                    {currentLang === "en" ? "Isolated Database Scope" : "Pangkalan Data Terasing"}
+                  </span>
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-1 block truncate">
                     {activeLoadedDbKey || "pengekosan_company_db_smartcost"}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-400 block font-medium">Status Pengasingan Multi-Tenant</span>
+                  <span className="text-slate-400 block font-medium">
+                    {currentLang === "en" ? "Workspace Isolation Status" : "Status Pengasingan Ruang Kerja"}
+                  </span>
                   <span className="font-bold text-emerald-600 dark:text-emerald-400 mt-1 block flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>Aktif & Terpelihara (100% Isolated)</span>
+                    <span>
+                      {currentLang === "en"
+                        ? "Active & Protected (100% Isolated)"
+                        : "Aktif & Terpelihara (Terasing Penuh)"}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -1391,32 +1426,12 @@ export default function SettingsSheet({
         {activeSubpage === "language" && (
           <div className="space-y-6">
             {renderSubpageHeader(
-              t.settings.categories?.systemPreferences || "KEUTAMAAN SISTEM",
-              t.settings.items?.displayLanguage || "Bahasa Paparan",
-              t.settings.items?.displayLanguageDesc || "Pilih antara Bahasa Melayu (Standard MY) atau English (US)"
+              t.settings.categories?.systemPreferences,
+              t.settings.items?.displayLanguage,
+              t.settings.items?.displayLanguageDesc
             )}
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => handleLanguageChange("ms")}
-                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-start justify-between ${
-                    currentLang === "ms"
-                      ? "bg-blue-50/70 dark:bg-sky-950/40 border-[#0b3c7a] dark:border-sky-500 shadow-sm"
-                      : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300"
-                  }`}
-                >
-                  <div>
-                    <span className="font-bold text-sm text-slate-900 dark:text-white block">
-                      🇲🇾 Bahasa Melayu (Lalai)
-                    </span>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Bahasa rasmi dan mesra peniaga kecil & sederhana di Malaysia.
-                    </p>
-                  </div>
-                  {currentLang === "ms" && <Check className="w-5 h-5 text-[#0b3c7a] dark:text-sky-400 shrink-0" />}
-                </button>
-
                 <button
                   type="button"
                   onClick={() => handleLanguageChange("en")}
@@ -1428,15 +1443,42 @@ export default function SettingsSheet({
                 >
                   <div>
                     <span className="font-bold text-sm text-slate-900 dark:text-white block">
-                      🇺🇸 English (US)
+                      {t.settings.englishOption}
                     </span>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Standard professional costing terminology and financial metrics.
+                      {currentLang === "en"
+                        ? "Standard professional costing terminology and financial metrics."
+                        : "Paparan rasmi bahasa Inggeris untuk pengekosan dan laporan kewangan."}
                     </p>
                   </div>
                   {currentLang === "en" && <Check className="w-5 h-5 text-[#0b3c7a] dark:text-sky-400 shrink-0" />}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleLanguageChange("ms")}
+                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-start justify-between ${
+                    currentLang === "ms"
+                      ? "bg-blue-50/70 dark:bg-sky-950/40 border-[#0b3c7a] dark:border-sky-500 shadow-sm"
+                      : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                  }`}
+                >
+                  <div>
+                    <span className="font-bold text-sm text-slate-900 dark:text-white block">
+                      {t.settings.malayOption}
+                    </span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {currentLang === "en"
+                        ? "Official Bahasa Melayu interface tailored for Malaysian enterprises."
+                        : "Bahasa rasmi yang jelas dan mesra usahawan di Malaysia."}
+                    </p>
+                  </div>
+                  {currentLang === "ms" && <Check className="w-5 h-5 text-[#0b3c7a] dark:text-sky-400 shrink-0" />}
+                </button>
               </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {t.settings.languageApplyNotice}
+              </p>
             </div>
           </div>
         )}
@@ -1532,16 +1574,16 @@ export default function SettingsSheet({
 
               <div className="space-y-1.5 pt-2">
                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 block">
-                  Pilihan Pantas Mata Wang Serantau:
+                  {currentLang === "en" ? "Regional Quick Currency Presets:" : "Pilihan Pantas Mata Wang Serantau:"}
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { code: "RM", label: "🇲🇾 RM (Ringgit Malaysia)" },
-                    { code: "SGD", label: "🇸🇬 SGD (Dollar)" },
-                    { code: "USD", label: "🇺🇸 USD ($)" },
-                    { code: "EUR", label: "🇪🇺 EUR (€)" },
-                    { code: "GBP", label: "🇬🇧 GBP (£)" },
-                    { code: "IDR", label: "🇮🇩 IDR (Rp)" },
+                    { code: "RM", label: currentLang === "en" ? "RM (Malaysian Ringgit)" : "RM (Ringgit Malaysia)" },
+                    { code: "SGD", label: currentLang === "en" ? "SGD (Singapore Dollar)" : "SGD (Dolar Singapura)" },
+                    { code: "USD", label: "USD ($)" },
+                    { code: "EUR", label: "EUR (€)" },
+                    { code: "GBP", label: "GBP (£)" },
+                    { code: "IDR", label: "IDR (Rp)" },
                   ].map((curr) => (
                     <button
                       key={curr.code}
@@ -1595,17 +1637,28 @@ export default function SettingsSheet({
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 font-mono uppercase border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="p-2.5">Kategori</th>
-                      <th className="p-2.5">Simbol Unit</th>
-                      <th className="p-2.5">Nama Penuh</th>
-                      <th className="p-2.5">Faktor Asas</th>
+                      <th className="p-2.5">{currentLang === "en" ? "Category" : "Kategori"}</th>
+                      <th className="p-2.5">{currentLang === "en" ? "Unit Symbol" : "Simbol Unit"}</th>
+                      <th className="p-2.5">{currentLang === "en" ? "Full Name" : "Nama Penuh"}</th>
+                      <th className="p-2.5">{currentLang === "en" ? "Base Factor" : "Faktor Asas"}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                    {Object.entries(UNIT_DEFINITIONS).slice(0, 15).map(([symbol, u]) => (
+                    {Object.entries(UNIT_DEFINITIONS).slice(0, 15).map(([symbol, u]) => {
+                      const catLabel =
+                        currentLang === "en"
+                          ? u.category
+                          : u.category === "mass"
+                            ? "jisim"
+                            : u.category === "volume"
+                              ? "isipadu"
+                              : u.category === "length"
+                                ? "panjang"
+                                : "kiraan";
+                      return (
                       <tr key={symbol} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50">
                         <td className="p-2.5 font-sans font-bold capitalize text-slate-800 dark:text-slate-200">
-                          {u.category}
+                          {catLabel}
                         </td>
                         <td className="p-2.5 font-bold text-sky-600 dark:text-sky-400">
                           {u.canonical || symbol}
@@ -1614,10 +1667,11 @@ export default function SettingsSheet({
                           {u.aliases?.[1] || u.aliases?.[0] || symbol}
                         </td>
                         <td className="p-2.5 text-slate-500">
-                          {u.factorToBase} {u.category === "mass" ? "gram" : u.category === "volume" ? "ml" : u.category === "length" ? "mm" : "unit"}
+                          {u.factorToBase} {u.category === "mass" ? "gram" : u.category === "volume" ? "ml" : u.category === "length" ? "mm" : (currentLang === "en" ? "units" : "unit")}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1636,14 +1690,28 @@ export default function SettingsSheet({
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1">
-                  <span className="text-slate-400 font-semibold block">Format Tarikh Piawai</span>
+                  <span className="text-slate-400 font-semibold block">
+                    {currentLang === "en" ? "Standard Date Format" : "Format Tarikh Piawai"}
+                  </span>
                   <span className="font-bold text-slate-900 dark:text-white text-sm block">DD/MM/YYYY</span>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Contoh: 31/12/2025 (Piawaian Malaysia & Komanwel)</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {currentLang === "en"
+                      ? "Example: 31/12/2025 (International Business Standard)"
+                      : "Contoh: 31/12/2025 (Piawaian Malaysia & Komanwel)"}
+                  </p>
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1">
-                  <span className="text-slate-400 font-semibold block">Format Titik Perpuluhan</span>
-                  <span className="font-bold text-slate-900 dark:text-white text-sm block">2 Tempat Perpuluhan (0.00)</span>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Contoh: RM 1,250.50 dengan pemisah koma ribuan</p>
+                  <span className="text-slate-400 font-semibold block">
+                    {currentLang === "en" ? "Decimal Precision Format" : "Format Titik Perpuluhan"}
+                  </span>
+                  <span className="font-bold text-slate-900 dark:text-white text-sm block">
+                    {currentLang === "en" ? "2 Decimal Places (0.00)" : "2 Tempat Perpuluhan (0.00)"}
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {currentLang === "en"
+                      ? `Example: ${localConfig.currency || "RM"} 1,250.50 with comma thousands separator`
+                      : `Contoh: ${localConfig.currency || "RM"} 1,250.50 dengan pemisah koma ribuan`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1662,7 +1730,7 @@ export default function SettingsSheet({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Cadangan Harga Jualan Piawai ({localConfig.currency || "RM"})
+                    {t.settings.stdSellingPrice} ({localConfig.currency || "RM"})
                   </label>
                   <input
                     type="number"
@@ -1676,7 +1744,7 @@ export default function SettingsSheet({
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Sasaran Kuantiti Pengeluaran Piawai (Batch)
+                    {currentLang === "en" ? "Standard Production Batch Target" : "Sasaran Kuantiti Pengeluaran Piawai (Kelompok)"}
                   </label>
                   <input
                     type="number"
@@ -1690,11 +1758,11 @@ export default function SettingsSheet({
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Unit Pengeluaran Dapur/Kilang
+                    {currentLang === "en" ? "Production Output Unit" : "Unit Pengeluaran Dapur / Kilang"}
                   </label>
                   <input
                     type="text"
-                    value={localConfig.unitPengeluaran || "bekas"}
+                    value={localConfig.unitPengeluaran || (currentLang === "en" ? "units" : "unit")}
                     onChange={(e) => setLocalConfig({ ...localConfig, unitPengeluaran: e.target.value })}
                     onKeyDown={handleInputEnterKey}
                     disabled={!roleDef.canEditSettings}
@@ -1737,7 +1805,7 @@ export default function SettingsSheet({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Harga Jualan Sebenar ({localConfig.currency || "RM"})
+                    {t.settings.actSellingPrice} ({localConfig.currency || "RM"})
                   </label>
                   <input
                     type="number"
@@ -1751,7 +1819,7 @@ export default function SettingsSheet({
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Kuantiti Sebenar Dijual Seminggu
+                    {t.settings.actQtySold}
                   </label>
                   <input
                     type="number"
@@ -1764,7 +1832,7 @@ export default function SettingsSheet({
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Kuantiti Pengeluaran Sebenar (Batch)
+                    {currentLang === "en" ? "Actual Production Batch Quantity" : "Kuantiti Pengeluaran Sebenar (Kelompok)"}
                   </label>
                   <input
                     type="number"
@@ -1902,14 +1970,28 @@ export default function SettingsSheet({
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1">
-                  <span className="text-slate-400 font-semibold block">Sasaran Margin Untung Kasar</span>
+                  <span className="text-slate-400 font-semibold block">
+                    {t.settings.costingTargetMarginLabel}
+                  </span>
                   <span className="font-bold text-slate-900 dark:text-white text-base block">40.0%</span>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Cadangan piawai industri F&B dan perkilangan kecil.</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {currentLang === "en"
+                      ? "Recommended industry benchmark for F&B and small-scale manufacturing."
+                      : "Cadangan piawai industri F&B dan perkilangan kecil."}
+                  </p>
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1">
-                  <span className="text-slate-400 font-semibold block">Formula Titik Pulang Modal (TPM)</span>
-                  <span className="font-bold text-slate-900 dark:text-white text-base block">Kos Tetap ÷ Margin Caruman</span>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Mengira jumlah unit minimum untuk pulang modal.</p>
+                  <span className="text-slate-400 font-semibold block">
+                    {t.settings.costingBepMethodLabel}
+                  </span>
+                  <span className="font-bold text-slate-900 dark:text-white text-base block">
+                    {currentLang === "en" ? "Fixed Costs ÷ Contribution Margin" : "Kos Tetap ÷ Margin Caruman"}
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {currentLang === "en"
+                      ? "Computes the minimum sales volume needed to reach break-even."
+                      : "Mengira jumlah unit minimum untuk pulang modal."}
+                  </p>
                 </div>
               </div>
             </div>
@@ -2213,22 +2295,24 @@ export default function SettingsSheet({
               t.settings.items?.accountSecurityDesc || "Kebenaran capaian mengikut peranan, had kuasa dan rekod audit"
             )}
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
-              <div className="p-4 bg-sky-50 dark:bg-sky-950/40 rounded-xl border border-sky-100 dark:border-sky-800 flex items-center justify-between">
+              <div className="p-4 bg-sky-50 dark:bg-sky-950/40 rounded-xl border border-sky-100 dark:border-sky-800 flex items-center justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-bold text-sky-950 dark:text-sky-200">
-                    Kawalan Capaian Berasaskan Peranan (RBAC)
+                    {currentLang === "en" ? "Role-Based Access Control (RBAC)" : "Kawalan Capaian Berasaskan Peranan (RBAC)"}
                   </h4>
                   <p className="text-xs text-sky-700 dark:text-sky-400 mt-0.5">
-                    Memastikan kerani, pengurus, penyelia dan juruaudit hanya mengakses modul yang dibenarkan.
+                    {currentLang === "en"
+                      ? "Ensures clerks, managers, supervisors, and auditors only access authorized modules."
+                      : "Memastikan kerani, pengurus, penyelia dan juruaudit hanya mengakses modul yang dibenarkan."}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={onOpenAccessMatrixModal}
-                  className="px-4 py-2 bg-[#0b3c7a] hover:bg-[#093163] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 bg-[#0b3c7a] hover:bg-[#093163] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
                 >
                   <Lock className="w-4 h-4" />
-                  <span>Buka Matriks RBAC</span>
+                  <span>{currentLang === "en" ? "Open RBAC Matrix" : "Buka Matriks RBAC"}</span>
                 </button>
               </div>
             </div>
@@ -2246,12 +2330,17 @@ export default function SettingsSheet({
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs text-xs">
               <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-800 dark:text-slate-200">Sesi Pelayar Web Semasa</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {currentLang === "en" ? "Current Browser Session" : "Sesi Pelayar Web Semasa"}
+                  </span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    Aktif Sekarang
+                    {currentLang === "en" ? "Active Now" : "Aktif Sekarang"}
                   </span>
                 </div>
-                <p className="text-slate-500">Log masuk sebagai: <strong className="text-slate-700 dark:text-slate-300">{currentUser?.username || "admin"}</strong> ({userRole})</p>
+                <p className="text-slate-500">
+                  {currentLang === "en" ? "Signed in as:" : "Log masuk sebagai:"}{" "}
+                  <strong className="text-slate-700 dark:text-slate-300">{currentUser?.username || "admin"}</strong> ({roleDef.title})
+                </p>
               </div>
               <div className="pt-2 flex justify-end">
                 <button
@@ -2278,15 +2367,19 @@ export default function SettingsSheet({
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-400 block font-medium">Kunci Storan Pangkalan Data</span>
+                  <span className="text-slate-400 block font-medium">
+                    {currentLang === "en" ? "Database Storage Key" : "Kunci Storan Pangkalan Data"}
+                  </span>
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-1 block truncate">
                     {activeLoadedDbKey || "pengekosan_company_db_smartcost"}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-400 block font-medium">Jumlah Produk Didaftarkan</span>
+                  <span className="text-slate-400 block font-medium">
+                    {currentLang === "en" ? "Total Registered Products" : "Jumlah Produk Didaftarkan"}
+                  </span>
                   <span className="font-bold text-slate-800 dark:text-slate-200 mt-1 block">
-                    {templates.length} produk
+                    {currentLang === "en" ? `${templates.length} products` : `${templates.length} produk`}
                   </span>
                 </div>
               </div>
@@ -2317,10 +2410,12 @@ export default function SettingsSheet({
             <div className="bg-white dark:bg-[#061830] rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xs">
               <div className="p-4 bg-sky-50 dark:bg-sky-950/40 rounded-xl border border-sky-100 dark:border-sky-800 space-y-2">
                 <h4 className="font-bold text-sm text-sky-950 dark:text-sky-200">
-                  Eksport Sandaran Pangkalan Data (JSON)
+                  {currentLang === "en" ? "Export Database Backup (JSON)" : "Eksport Sandaran Pangkalan Data (JSON)"}
                 </h4>
                 <p className="text-xs text-sky-700 dark:text-sky-400">
-                  Muat turun fail sandaran mengandungi semua rekod kos, templat produk, bahan mentah dan tetapan syarikat.
+                  {currentLang === "en"
+                    ? "Download a JSON backup file containing all costing records, product templates, materials, and company settings."
+                    : "Muat turun fail sandaran mengandungi semua rekod kos, templat produk, bahan mentah dan tetapan syarikat."}
                 </p>
                 <div className="pt-2 flex flex-wrap gap-2">
                   <button
@@ -2348,7 +2443,7 @@ export default function SettingsSheet({
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
                   >
                     <Download className="w-4 h-4" />
-                    <span>Muat Turun Sandaran (JSON)</span>
+                    <span>{currentLang === "en" ? "Download Backup (JSON)" : "Muat Turun Sandaran (JSON)"}</span>
                   </button>
                   {isAuthorizedDeveloper && onOpenDatabaseModal && (
                     <button
@@ -2357,7 +2452,7 @@ export default function SettingsSheet({
                       className="px-4 py-2 bg-[#0b3c7a] hover:bg-[#093163] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
                     >
                       <Database className="w-4 h-4 text-sky-400" />
-                      <span>Urus Arkib & Sandaran di Pangkalan Data</span>
+                      <span>{currentLang === "en" ? "Manage Archives & Backups" : "Urus Arkib & Sandaran di Pangkalan Data"}</span>
                     </button>
                   )}
                 </div>
@@ -2393,7 +2488,7 @@ export default function SettingsSheet({
             className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-all shadow-2xs hover:bg-slate-50 cursor-pointer"
           >
             <Globe className="w-3.5 h-3.5 text-[#0b3c7a] dark:text-sky-400" />
-            <span>{currentLang === "en" ? "BM" : "EN"}</span>
+            <span>{currentLang === "en" ? t.settings.malayOption : t.settings.englishOption}</span>
           </button>
           <button
             type="button"
@@ -2401,7 +2496,7 @@ export default function SettingsSheet({
             className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-all shadow-2xs hover:bg-slate-50 cursor-pointer"
           >
             {currentTheme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-600" />}
-            <span>{currentTheme === "dark" ? "Cerah" : "Gelap"}</span>
+            <span>{currentTheme === "dark" ? t.settings.lightLabel : t.settings.darkLabel}</span>
           </button>
         </div>
       </div>
@@ -2533,11 +2628,11 @@ export default function SettingsSheet({
                     {t.settings.items?.businessProfile || "Profil Perniagaan"}
                   </span>
                   <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-100 text-[#0b3c7a] dark:bg-sky-900/60 dark:text-sky-300 uppercase">
-                    Borang Terus
+                    {currentLang === "en" ? "Direct Form" : "Borang Terus"}
                   </span>
                 </div>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  {businessForm.companyName} • {businessForm.businessRegNo || "SSM"} • {businessForm.city || "Alamat Premis"}
+                  {businessForm.companyName} • {businessForm.businessRegNo || "SSM"} • {businessForm.city || (currentLang === "en" ? "Premises Address" : "Alamat Premis")}
                 </span>
               </div>
             </div>
@@ -2659,7 +2754,7 @@ export default function SettingsSheet({
                   {t.settings.items?.displayLanguage || "Bahasa Paparan"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  {currentLang === "ms" ? "🇲🇾 Bahasa Melayu (Lalai)" : "🇺🇸 English (US)"}
+                  {currentLang === "ms" ? t.settings.malayOption : t.settings.englishOption}
                 </span>
               </div>
             </div>
@@ -2681,7 +2776,7 @@ export default function SettingsSheet({
                   {t.settings.items?.appearanceTheme || "Rupa & Tema"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  {currentTheme === "dark" ? "Mod Gelap (Navy / Charcoal)" : "Mod Cerah (Light)"}
+                  {currentTheme === "dark" ? t.settings.darkOptionDesc : t.settings.lightOptionDesc}
                 </span>
               </div>
             </div>
@@ -2703,7 +2798,8 @@ export default function SettingsSheet({
                   {t.settings.items?.currencySettings || "Tetapan Mata Wang"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  Mata wang semasa: <strong className="font-mono text-emerald-600 dark:text-emerald-400">{localConfig.currency || "RM"}</strong>
+                  {currentLang === "en" ? "Active currency:" : "Mata wang semasa:"}{" "}
+                  <strong className="font-mono text-emerald-600 dark:text-emerald-400">{localConfig.currency || "RM"}</strong>
                 </span>
               </div>
             </div>
@@ -2725,7 +2821,7 @@ export default function SettingsSheet({
                   {t.settings.items?.measurementUnits || "Unit Ukuran"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  kg, gram, keping, botol, liter, meter (Piawaian Metrik & Kiraan)
+                  {t.settings.items?.measurementUnitsDesc}
                 </span>
               </div>
             </div>
@@ -2747,7 +2843,9 @@ export default function SettingsSheet({
                   {t.settings.items?.dateNumberFormat || "Format Tarikh & Nombor"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  DD/MM/YYYY • Format 2 perpuluhan ringgit (0.00)
+                  {currentLang === "en"
+                    ? "DD/MM/YYYY • 2 decimal places (0.00)"
+                    : "DD/MM/YYYY • Format 2 perpuluhan mata wang (0.00)"}
                 </span>
               </div>
             </div>
@@ -2777,7 +2875,7 @@ export default function SettingsSheet({
                   {t.settings.items?.standardCostSettings || "Tetapan Kos Piawai"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  Harga standard: {localConfig.currency} {localConfig.hargaJualanStandard?.toFixed(2)} • Batch: {localConfig.kuantitiPengeluaranPiawai || 20}
+                  {currentLang === "en" ? "Standard price:" : "Harga piawai:"} {localConfig.currency} {localConfig.hargaJualanStandard?.toFixed(2)} • {t.common.batch}: {localConfig.kuantitiPengeluaranPiawai || 20}
                 </span>
               </div>
             </div>
@@ -2799,7 +2897,7 @@ export default function SettingsSheet({
                   {t.settings.items?.actualCostSettings || "Tetapan Kos Sebenar"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  Harga jualan sebenar: {localConfig.currency} {localConfig.hargaJualanSebenar?.toFixed(2)} • Kuantiti dijual: {localConfig.kuantitiSebenarDijual}
+                  {currentLang === "en" ? "Actual selling price:" : "Harga jualan sebenar:"} {localConfig.currency} {localConfig.hargaJualanSebenar?.toFixed(2)} • {t.settings.actQtySold}: {localConfig.kuantitiSebenarDijual}
                 </span>
               </div>
             </div>
@@ -2821,7 +2919,9 @@ export default function SettingsSheet({
                   {t.settings.items?.productionUnits || "Unit Pengeluaran & Produk"}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate block">
-                  {templates.length} produk didaftarkan • Urus menu dan resipi
+                  {currentLang === "en"
+                    ? `${templates.length} registered products • Manage menus and recipes`
+                    : `${templates.length} produk didaftarkan • Urus menu dan resipi`}
                 </span>
               </div>
             </div>
@@ -3111,7 +3211,7 @@ export default function SettingsSheet({
               <span>{t.settings.categories?.developerSettings || "PEMBANGUN"}</span>
             </h3>
             <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-              Kebenaran Peringkat Tinggi
+              {currentLang === "en" ? "Elevated Clearance" : "Kebenaran Peringkat Tinggi"}
             </span>
           </div>
 
@@ -3138,7 +3238,7 @@ export default function SettingsSheet({
 
               <div className="flex items-center gap-2.5 shrink-0">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 tracking-wide uppercase">
-                  Rahsia
+                  {currentLang === "en" ? "Restricted" : "Rahsia"}
                 </span>
                 <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
               </div>

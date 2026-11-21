@@ -11,7 +11,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, Check, Upload, Trash2, Building2, Calendar, FileText, Globe, Landmark, Phone, Printer, Mail, ExternalLink, ShieldAlert } from "lucide-react";
 import { KonfigurasiSistem, GeneralSetupConfig } from "../types";
-import { Language } from "../utils/i18n";
+import { Language, getTranslation } from "../utils/i18n";
 import { validateAndReadImageFile } from "../utils/fileUploadSecurity";
 
 interface GeneralSetupModalProps {
@@ -28,9 +28,11 @@ export default function GeneralSetupModal({
   onClose,
   config,
   onSaveConfig,
-  systemLang = "ms",
+  systemLang = "en",
   inline = false,
 }: GeneralSetupModalProps) {
+  const isEn = systemLang === "en";
+  const t = getTranslation(systemLang);
   const [activeTab, setActiveTab] = useState<"company" | "options" | "stock" | "bills">("company");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +74,7 @@ export default function GeneralSetupModal({
 
   const [formData, setFormData] = useState<GeneralSetupConfig>(initialSetup);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
+  const [taxNotice, setTaxNotice] = useState<string | null>(null);
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,6 +85,7 @@ export default function GeneralSetupModal({
         ...(config.generalSetup || {}),
       });
       setSaveSuccessNotice(false);
+      setTaxNotice(null);
       setLogoUploadError(null);
     }
   }, [isOpen, config]);
@@ -145,7 +149,7 @@ export default function GeneralSetupModal({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
             <span className="font-bold text-xs tracking-wide">
-              {systemLang === "en" ? "General Setup" : "Tetapan Umum (General Setup)"}
+              {isEn ? "General Setup" : "Tetapan Umum"}
             </span>
             <span className="text-[10px] text-cyan-200 bg-[#061830] px-2 py-0.5 rounded border border-cyan-400/30">
               {formData.companyName || "SMARTCOST"}
@@ -155,7 +159,7 @@ export default function GeneralSetupModal({
             type="button"
             onClick={onClose}
             className="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-600 transition-colors text-white text-xs cursor-pointer"
-            title={systemLang === "en" ? "Close" : "Tutup"}
+            title={t.common.close}
           >
             ✕
           </button>
@@ -172,7 +176,7 @@ export default function GeneralSetupModal({
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
-            {systemLang === "en" ? "Company" : "Syarikat (Company)"}
+            {t.generalSetup.tabCompany}
           </button>
           <button
             type="button"
@@ -183,7 +187,7 @@ export default function GeneralSetupModal({
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
-            {systemLang === "en" ? "Options" : "Pilihan (Options)"}
+            {t.generalSetup.tabOptions}
           </button>
           <button
             type="button"
@@ -194,7 +198,7 @@ export default function GeneralSetupModal({
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
-            {systemLang === "en" ? "Stock" : "Stok (Stock)"}
+            {isEn ? "Stock" : "Stok"}
           </button>
           <button
             type="button"
@@ -205,7 +209,7 @@ export default function GeneralSetupModal({
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
-            {systemLang === "en" ? "Bills" : "Bil (Bills)"}
+            {isEn ? "Bills" : "Bil"}
           </button>
         </div>
 
@@ -215,7 +219,21 @@ export default function GeneralSetupModal({
           {saveSuccessNotice && (
             <div className="p-2.5 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded text-xs font-bold flex items-center gap-2">
               <Check className="w-4 h-4 text-emerald-600" />
-              <span>{systemLang === "en" ? "Settings saved successfully." : "Tetapan maklumat perniagaan dan perakaunan berjaya disimpan."}</span>
+              <span>{isEn ? "Settings saved successfully." : "Tetapan maklumat perniagaan dan perakaunan berjaya disimpan."}</span>
+            </div>
+          )}
+
+          {taxNotice && (
+            <div className="p-2.5 bg-sky-100 border border-sky-300 text-sky-900 rounded text-xs font-bold flex items-center justify-between gap-2">
+              <span>{taxNotice}</span>
+              <button
+                type="button"
+                onClick={() => setTaxNotice(null)}
+                className="text-sky-700 hover:text-sky-950 font-bold cursor-pointer"
+                aria-label={t.common.close}
+              >
+                ✕
+              </button>
             </div>
           )}
 
@@ -229,7 +247,7 @@ export default function GeneralSetupModal({
                   {/* Company Name */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
                     <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                      Company Name
+                      {t.generalSetup.companyName}
                     </label>
                     <input
                       type="text"
@@ -237,14 +255,14 @@ export default function GeneralSetupModal({
                       value={formData.companyName}
                       onChange={(e) => handleFieldChange("companyName", e.target.value)}
                       className="sm:col-span-3 px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-bold text-slate-800 dark:text-slate-100 uppercase focus:border-[#0b3c7a] outline-hidden"
-                      placeholder="e.g. AMG SDN BHD"
+                      placeholder={isEn ? "e.g. AMG SDN BHD" : "cth. AMG SDN BHD"}
                     />
                   </div>
 
                   {/* Address (4 Lines) */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-2 pt-1">
                     <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right pt-1.5">
-                      Address
+                      {t.generalSetup.address}
                     </label>
                     <div className="sm:col-span-3 space-y-1.5">
                       <input
@@ -281,7 +299,7 @@ export default function GeneralSetupModal({
                   {/* Business Reg. No. */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 pt-1">
                     <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                      Business Reg. No.
+                      {t.generalSetup.regNo}
                     </label>
                     <div className="sm:col-span-3 flex items-center gap-1.5">
                       <input
@@ -296,9 +314,9 @@ export default function GeneralSetupModal({
                         onChange={(e) => handleFieldChange("regNoType", e.target.value)}
                         className="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-bold text-slate-700 dark:text-slate-300 outline-hidden cursor-pointer"
                       >
-                        <option value="V">V (Standard)</option>
-                        <option value="NEW">12-Digit (New SSM)</option>
-                        <option value="OLD">Old Format</option>
+                        <option value="V">{isEn ? "V (Standard)" : "V (Piawai)"}</option>
+                        <option value="NEW">{isEn ? "12-Digit (New SSM)" : "12-Digit (SSM Baharu)"}</option>
+                        <option value="OLD">{isEn ? "Old Format" : "Format Lama"}</option>
                       </select>
                     </div>
                   </div>
@@ -306,7 +324,7 @@ export default function GeneralSetupModal({
                   {/* Phone #1 & Fax */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 pt-1">
                     <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                      Phone #1
+                      {isEn ? "Phone #1" : "Telefon #1"}
                     </label>
                     <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input
@@ -317,7 +335,9 @@ export default function GeneralSetupModal({
                         placeholder="604-6561234"
                       />
                       <div className="flex items-center gap-1.5">
-                        <label className="text-slate-600 dark:text-slate-400 shrink-0 font-medium text-[11px]">Fax</label>
+                        <label className="text-slate-600 dark:text-slate-400 shrink-0 font-medium text-[11px]">
+                          {isEn ? "Fax" : "Faks"}
+                        </label>
                         <input
                           type="text"
                           value={formData.fax || ""}
@@ -332,7 +352,7 @@ export default function GeneralSetupModal({
                   {/* Phone #2 & Bank A/C */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 pt-1">
                     <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                      Phone #2
+                      {isEn ? "Phone #2" : "Telefon #2"}
                     </label>
                     <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input
@@ -343,13 +363,15 @@ export default function GeneralSetupModal({
                         placeholder="012-3456789"
                       />
                       <div className="flex items-center gap-1.5">
-                        <label className="text-slate-600 dark:text-slate-400 shrink-0 font-medium text-[11px]">Bank A/C</label>
+                        <label className="text-slate-600 dark:text-slate-400 shrink-0 font-medium text-[11px]">
+                          {isEn ? "Bank A/C" : "Akaun Bank"}
+                        </label>
                         <input
                           type="text"
                           value={formData.bankAccount || ""}
                           onChange={(e) => handleFieldChange("bankAccount", e.target.value)}
                           className="flex-1 px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-800 dark:text-slate-100 focus:border-[#0b3c7a] outline-hidden"
-                          placeholder="Bank & No. Akaun"
+                          placeholder={isEn ? "Bank & Account No." : "Bank & No. Akaun"}
                         />
                       </div>
                     </div>
@@ -358,21 +380,21 @@ export default function GeneralSetupModal({
                   {/* Email */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 pt-1">
                     <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                      Email
+                      {isEn ? "Email" : "E-mel"}
                     </label>
                     <input
                       type="email"
                       value={formData.email || ""}
                       onChange={(e) => handleFieldChange("email", e.target.value)}
                       className="sm:col-span-3 px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-800 dark:text-slate-100 focus:border-[#0b3c7a] outline-hidden"
-                      placeholder="pengurusan@syarikat.com.my"
+                      placeholder={isEn ? "management@company.com" : "pengurusan@syarikat.com.my"}
                     />
                   </div>
 
                   {/* Website */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 pt-1">
                     <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                      Website
+                      {isEn ? "Website" : "Laman Web"}
                     </label>
                     <div className="sm:col-span-3 flex items-center justify-between gap-3">
                       <input
@@ -380,14 +402,14 @@ export default function GeneralSetupModal({
                         value={formData.website || ""}
                         onChange={(e) => handleFieldChange("website", e.target.value)}
                         className="flex-1 px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs text-slate-800 dark:text-slate-100 focus:border-[#0b3c7a] outline-hidden"
-                        placeholder="https://www.syarikat.com.my"
+                        placeholder={isEn ? "https://www.company.com" : "https://www.syarikat.com.my"}
                       />
                       <button
                         type="button"
                         onClick={() => setActiveTab("options")}
                         className="text-[#0b3c7a] dark:text-cyan-400 font-bold hover:underline cursor-pointer shrink-0 text-[11px]"
                       >
-                        More Company Setting
+                        {isEn ? "More Company Settings" : "Tetapan Syarikat Lanjutan"}
                       </button>
                     </div>
                   </div>
@@ -399,13 +421,15 @@ export default function GeneralSetupModal({
                     {formData.logoUrl ? (
                       <img
                         src={formData.logoUrl}
-                        alt="Logo Syarikat"
+                        alt={isEn ? "Company Logo" : "Logo Syarikat"}
                         className="max-w-full max-h-full object-contain"
                       />
                     ) : (
                       <div className="text-slate-400 space-y-1">
                         <Building2 className="w-8 h-8 mx-auto text-slate-400" />
-                        <span className="text-[11px] block font-medium">Company Logo</span>
+                        <span className="text-[11px] block font-medium">
+                          {isEn ? "Company Logo" : "Logo Syarikat"}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -422,17 +446,19 @@ export default function GeneralSetupModal({
                       htmlFor="company-logo-upload-input"
                       className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:border-slate-400 rounded text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer shadow-2xs hover:bg-slate-50"
                     >
-                      Load
+                      {isEn ? "Load" : "Muat Naik"}
                     </label>
                     <button
                       type="button"
                       onClick={handleClearLogo}
                       className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:border-slate-400 rounded text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer shadow-2xs hover:bg-slate-50"
                     >
-                      Clear
+                      {isEn ? "Clear" : "Kosongkan"}
                     </button>
                   </div>
-                  <span className="text-[10px] text-slate-500">PNG, JPG, WEBP (Maks. 2MB)</span>
+                  <span className="text-[10px] text-slate-500">
+                    PNG, JPG, WEBP {t.generalSetup.logoMaxHint}
+                  </span>
                   {logoUploadError && (
                     <span className="text-[10px] text-rose-600 font-semibold text-center max-w-[190px]">
                       {logoUploadError}
@@ -444,7 +470,7 @@ export default function GeneralSetupModal({
               {/* MIDDLE SECTION: THIS YEAR ACCOUNTING PERIOD */}
               <div className="border-t border-slate-300 dark:border-slate-700 pt-3 space-y-2">
                 <h4 className="font-bold text-slate-900 dark:text-slate-100 text-xs">
-                  This Year Accounting Period
+                  {isEn ? "This Year Accounting Period" : "Tempoh Perakaunan Tahun Semasa"}
                 </h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -452,7 +478,7 @@ export default function GeneralSetupModal({
                   <div className="space-y-2">
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
                       <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                        From Date
+                        {t.generalSetup.fromDate}
                       </label>
                       <div className="sm:col-span-3 flex items-center gap-2">
                         <input
@@ -462,7 +488,9 @@ export default function GeneralSetupModal({
                           className="w-28 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-center outline-hidden"
                           placeholder="01/01/2025"
                         />
-                        <span className="font-semibold text-slate-600 dark:text-slate-400">To</span>
+                        <span className="font-semibold text-slate-600 dark:text-slate-400">
+                          {isEn ? "To" : "Hingga"}
+                        </span>
                         <input
                           type="text"
                           value={formData.accountingPeriodTo}
@@ -475,7 +503,7 @@ export default function GeneralSetupModal({
 
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
                       <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                        Actual Start Date
+                        {isEn ? "Actual Start Date" : "Tarikh Mula Sebenar"}
                       </label>
                       <div className="sm:col-span-3">
                         <input
@@ -493,7 +521,7 @@ export default function GeneralSetupModal({
                   <div className="space-y-2">
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
                       <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                        Default Currency
+                        {t.generalSetup.defaultCurrency}
                       </label>
                       <div className="sm:col-span-3">
                         <input
@@ -508,7 +536,7 @@ export default function GeneralSetupModal({
 
                     <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
                       <label className="text-slate-700 dark:text-slate-300 font-semibold sm:text-right">
-                        Tax
+                        {isEn ? "Tax" : "Cukai"}
                       </label>
                       <div className="sm:col-span-3">
                         <select
@@ -517,7 +545,7 @@ export default function GeneralSetupModal({
                           className="w-36 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-bold text-slate-700 dark:text-slate-300 outline-hidden cursor-pointer"
                         >
                           <option value="Malaysia">Malaysia</option>
-                          <option value="Singapore">Singapore</option>
+                          <option value="Singapore">{isEn ? "Singapore" : "Singapura"}</option>
                           <option value="Brunei">Brunei</option>
                           <option value="Indonesia">Indonesia</option>
                         </select>
@@ -534,22 +562,28 @@ export default function GeneralSetupModal({
                 <div className="space-y-2 bg-slate-50 dark:bg-slate-800/40 p-3 rounded border border-slate-200 dark:border-slate-700">
                   <div className="flex items-center justify-between">
                     <h5 className="font-bold text-slate-900 dark:text-slate-100 text-xs">GST</h5>
-                    <span className="text-[10px] text-slate-400 font-medium">(Optional / Legacy)</span>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {isEn ? "(Optional / Legacy)" : "(Pilihan / Terdahulu)"}
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Start Date</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Start Date" : "Tarikh Mula"}
+                    </label>
                     <input
                       type="text"
                       value={formData.gstStartDate || ""}
                       onChange={(e) => handleFieldChange("gstStartDate", e.target.value)}
                       className="col-span-2 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
-                      placeholder="DD/MM/YYYY"
+                      placeholder={isEn ? "DD/MM/YYYY" : "HH/BB/TTTT"}
                     />
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Taxable Period</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Taxable Period" : "Tempoh Bercukai"}
+                    </label>
                     <div className="col-span-2 flex items-center gap-2">
                       <input
                         type="number"
@@ -559,23 +593,29 @@ export default function GeneralSetupModal({
                         onChange={(e) => handleFieldChange("gstTaxablePeriodMonths", parseInt(e.target.value) || 3)}
                         className="w-16 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-center"
                       />
-                      <span className="text-slate-600 dark:text-slate-400 text-[11px]">month(s)</span>
+                      <span className="text-slate-600 dark:text-slate-400 text-[11px]">
+                        {isEn ? "month(s)" : "bulan"}
+                      </span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Tax Reg. No.</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Tax Reg. No." : "No. Daftar Cukai"}
+                    </label>
                     <input
                       type="text"
                       value={formData.gstTaxRegNo || ""}
                       onChange={(e) => handleFieldChange("gstTaxRegNo", e.target.value)}
                       className="col-span-2 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
-                      placeholder="e.g. 000123456789"
+                      placeholder={isEn ? "e.g. 000123456789" : "cth. 000123456789"}
                     />
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Tax Description</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Tax Description" : "Keterangan Cukai"}
+                    </label>
                     <div className="col-span-2">
                       <input
                         type="text"
@@ -584,17 +624,25 @@ export default function GeneralSetupModal({
                         className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs"
                         placeholder="GST 0%"
                       />
-                      <span className="text-[10px] text-slate-400 block mt-0.5">e.g.: GST 6%</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        {isEn ? "e.g.: GST 6%" : "cth.: GST 6%"}
+                      </span>
                     </div>
                   </div>
 
                   <div className="pt-1 text-left">
                     <button
                       type="button"
-                      onClick={() => alert("GST setting dialog configured.")}
+                      onClick={() =>
+                        setTaxNotice(
+                          isEn
+                            ? "GST tax configuration is active in this setup."
+                            : "Tetapan cukai GST telah dikonfigurasi dalam profil ini."
+                        )
+                      }
                       className="text-[#0b3c7a] dark:text-cyan-400 font-bold hover:underline cursor-pointer text-[11px]"
                     >
-                      More GST Setting
+                      {isEn ? "More GST Settings" : "Tetapan GST Lanjutan"}
                     </button>
                   </div>
                 </div>
@@ -603,11 +651,15 @@ export default function GeneralSetupModal({
                 <div className="space-y-2 bg-slate-50 dark:bg-slate-800/40 p-3 rounded border border-slate-200 dark:border-slate-700">
                   <div className="flex items-center justify-between">
                     <h5 className="font-bold text-slate-900 dark:text-slate-100 text-xs">SST</h5>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Active in Malaysia</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                      {isEn ? "Active in Malaysia" : "Aktif di Malaysia"}
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Start Date</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Start Date" : "Tarikh Mula"}
+                    </label>
                     <input
                       type="text"
                       value={formData.sstStartDate || "01/09/2018"}
@@ -618,7 +670,9 @@ export default function GeneralSetupModal({
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Taxable Period</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Taxable Period" : "Tempoh Bercukai"}
+                    </label>
                     <div className="col-span-2 flex items-center gap-2">
                       <input
                         type="number"
@@ -628,12 +682,16 @@ export default function GeneralSetupModal({
                         onChange={(e) => handleFieldChange("sstTaxablePeriodMonths", parseInt(e.target.value) || 2)}
                         className="w-16 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-center"
                       />
-                      <span className="text-slate-600 dark:text-slate-400 text-[11px]">month(s)</span>
+                      <span className="text-slate-600 dark:text-slate-400 text-[11px]">
+                        {isEn ? "month(s)" : "bulan"}
+                      </span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Sales Tax Reg. No.</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Sales Tax Reg. No." : "No. Daftar Cukai Jualan"}
+                    </label>
                     <input
                       type="text"
                       value={formData.sstSalesTaxRegNo || ""}
@@ -644,7 +702,9 @@ export default function GeneralSetupModal({
                   </div>
 
                   <div className="grid grid-cols-3 items-center gap-2">
-                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">Service Tax Reg. No.</label>
+                    <label className="text-slate-600 dark:text-slate-400 text-right text-[11px]">
+                      {isEn ? "Service Tax Reg. No." : "No. Daftar Cukai Perkhidmatan"}
+                    </label>
                     <input
                       type="text"
                       value={formData.sstServiceTaxRegNo || ""}
@@ -657,10 +717,10 @@ export default function GeneralSetupModal({
                   <div className="pt-1 text-left">
                     <button
                       type="button"
-                      onClick={() => alert("SST setting dialog configured.")}
+                      onClick={() => setTaxNotice(t.generalSetup.sstConfiguredToast)}
                       className="text-[#0b3c7a] dark:text-cyan-400 font-bold hover:underline cursor-pointer text-[11px]"
                     >
-                      More SST Setting
+                      {isEn ? "More SST Settings" : "Tetapan SST Lanjutan"}
                     </button>
                   </div>
                 </div>
@@ -670,22 +730,38 @@ export default function GeneralSetupModal({
 
           {activeTab === "options" && (
             <div className="p-4 bg-white dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700 space-y-3">
-              <h4 className="font-bold text-slate-800 dark:text-slate-200">System Financial Options</h4>
+              <h4 className="font-bold text-slate-800 dark:text-slate-200">
+                {t.generalSetup.financialOptionsTitle}
+              </h4>
               <p className="text-slate-600 dark:text-slate-400 text-xs">
-                Configure standard cost decimals, batch calculation rules, and fiscal closing month.
+                {isEn
+                  ? "Configure standard cost decimals, batch calculation rules, and fiscal closing month."
+                  : "Tetapkan perpuluhan kos standard, peraturan pengiraan kelompok, dan bulan penutupan fiskal."}
               </p>
               <div className="space-y-2 pt-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" defaultChecked className="rounded text-[#0b3c7a]" />
-                  <span>Enforce Strict 2-decimal formatting for Malaysian Ringgit (e.g. RM 1,250.00)</span>
+                  <span>
+                    {isEn
+                      ? "Enforce strict 2-decimal formatting for currency amounts (e.g. 1,250.00)"
+                      : "Kuatkuasakan format 2 titik perpuluhan yang tepat bagi jumlah mata wang (cth. 1,250.00)"}
+                  </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" defaultChecked className="rounded text-[#0b3c7a]" />
-                  <span>Lock recipe standard cost modifications to System Administrator</span>
+                  <span>
+                    {isEn
+                      ? "Lock recipe standard cost modifications to System Administrator"
+                      : "Kunci pengubahsuaian kos standard resipi hanya untuk Pentadbir Sistem"}
+                  </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" defaultChecked className="rounded text-[#0b3c7a]" />
-                  <span>Separate production batch quantity from retail sales units</span>
+                  <span>
+                    {isEn
+                      ? "Separate production batch quantity from retail sales units"
+                      : "Asingkan kuantiti kelompok pengeluaran daripada unit jualan runcit"}
+                  </span>
                 </label>
               </div>
             </div>
@@ -693,26 +769,42 @@ export default function GeneralSetupModal({
 
           {activeTab === "stock" && (
             <div className="p-4 bg-white dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700 space-y-3">
-              <h4 className="font-bold text-slate-800 dark:text-slate-200">Inventory & Stock Costing Method</h4>
+              <h4 className="font-bold text-slate-800 dark:text-slate-200">
+                {isEn ? "Inventory & Stock Costing Method" : "Kaedah Penilaian Inventori & Stok"}
+              </h4>
               <p className="text-slate-600 dark:text-slate-400 text-xs">
-                Standard Valuation: Standard Costing / Weighted Average Cost (WAC).
+                {isEn
+                  ? "Standard Valuation: Standard Costing / Weighted Average Cost (WAC)."
+                  : "Penilaian Piawai: Pengekosan Standard / Kos Purata Berwajaran (WAC)."}
               </p>
               <div className="p-3 bg-blue-50 dark:bg-sky-950/40 rounded border border-blue-200 dark:border-sky-800 text-xs">
-                Current method is set to <strong>Standard Costing & Production Batch BOM</strong> compliant with Malaysian SME Cost Accounting.
+                {isEn ? (
+                  <>
+                    Current method is set to <strong>Standard Costing &amp; Production Batch BOM</strong> compliant with SME Cost Accounting standards.
+                  </>
+                ) : (
+                  <>
+                    Kaedah semasa ditetapkan kepada <strong>Pengekosan Standard &amp; Kelompok Pengeluaran</strong> mengikut piawaian Perakaunan Kos PKS.
+                  </>
+                )}
               </div>
             </div>
           )}
 
           {activeTab === "bills" && (
             <div className="p-4 bg-white dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700 space-y-3">
-              <h4 className="font-bold text-slate-800 dark:text-slate-200">Billing & Invoice Header Format</h4>
+              <h4 className="font-bold text-slate-800 dark:text-slate-200">
+                {isEn ? "Billing & Invoice Header Format" : "Format Kepala Bil & Invois"}
+              </h4>
               <p className="text-slate-600 dark:text-slate-400 text-xs">
-                Headers on PDF variance statements, quotation sheets, and cost cards will print the company name and SST/Reg No above.
+                {isEn
+                  ? "Headers on PDF variance statements, quotation sheets, and cost cards will print the company name and SST/Registration No. above."
+                  : "Kepala pada penyata varians PDF, lembaran sebut harga, dan kad kos akan mencetak nama syarikat serta No. Daftar/SST di atas."}
               </p>
             </div>
           )}
 
-          {/* Bottom Right Dialog Action Buttons (Matching Screenshot) */}
+          {/* Bottom Right Dialog Action Buttons */}
           <div className="pt-3 border-t border-slate-300 dark:border-slate-700 flex items-center justify-end gap-2.5">
             <button
               type="submit"
@@ -727,7 +819,7 @@ export default function GeneralSetupModal({
               className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded border border-slate-300 dark:border-slate-600 flex items-center gap-1.5 cursor-pointer transition-all"
             >
               <X className="w-3.5 h-3.5" />
-              <span>Cancel</span>
+              <span>{t.common.cancel}</span>
             </button>
           </div>
         </form>

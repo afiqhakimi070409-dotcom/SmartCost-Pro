@@ -23,7 +23,7 @@ function getExtension(fileName: string): string {
 
 export async function validateAndReadImageFile(
   file: File,
-  lang: "ms" | "en" = "ms"
+  lang: "ms" | "en" = "en"
 ): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
   if (!file) {
     return { ok: false, error: lang === "en" ? "No image file selected." : "Tiada fail imej dipilih." };
@@ -133,7 +133,7 @@ export function sanitizeParsedJson<T>(val: T, depth = 0): T {
 
 export async function validateAndReadJsonFile(
   file: File,
-  lang: "ms" | "en" = "ms"
+  lang: "ms" | "en" = "en"
 ): Promise<{ ok: true; data: any } | { ok: false; error: string }> {
   if (!file) {
     return { ok: false, error: lang === "en" ? "No file selected." : "Tiada fail dipilih." };

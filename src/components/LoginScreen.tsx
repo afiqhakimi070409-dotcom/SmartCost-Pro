@@ -8,7 +8,13 @@ import { KeyRound, User, LogIn, Soup, UserPlus, Building2, CheckCircle2, AlertCi
 import { RegisteredUser, UserRole, ROLE_DEFINITIONS } from "../types";
 import { defaultTemplates, createEmptyBusinessDatabase } from "../data/defaultTemplates";
 import smartcostLogo from "../assets/images/smartcost_official_logo_1786593263808.jpg";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import {
+  Language,
+  getTranslation,
+  getStoredLanguage,
+  getLocalizedRoleDef,
+  formatLocalizedDate,
+} from "../utils/i18n";
 import { 
   auth, 
   signInWithGoogle, 
@@ -52,15 +58,13 @@ export default function LoginScreen({
   defaultUsername,
   defaultPassword,
   systemLang,
-  onLanguageChange,
+  onLanguageChange: _onLanguageChange,
 }: LoginScreenProps) {
   const [lang, setLang] = useState<Language>(systemLang || getStoredLanguage());
   const t = getTranslation(lang);
 
   useEffect(() => {
-    if (systemLang) {
-      setLang(systemLang);
-    }
+    setLang(systemLang || getStoredLanguage());
   }, [systemLang]);
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -230,7 +234,7 @@ export default function LoginScreen({
         ...preferred,
         id: fbData.user.id || preferred.id,
         username: fbData.user.username || preferred.username || "user",
-        fullName: fbData.user.fullName || preferred.fullName || "Pengguna",
+        fullName: fbData.user.fullName || preferred.fullName || t.login.fallbackUser,
         companyName: fbData.user.companyName || preferred.companyName,
         role: fbData.user.role,
         email: fbData.user.email || preferred.email,
@@ -256,7 +260,7 @@ export default function LoginScreen({
       const safeUser = {
         id: preferred.id || fbUser.uid,
         username: preferred.username || (cleanEmail ? cleanEmail.split("@")[0] : "user"),
-        fullName: preferred.fullName || fbUser.displayName || (cleanEmail ? cleanEmail.split("@")[0] : "Pengguna"),
+        fullName: preferred.fullName || fbUser.displayName || (cleanEmail ? cleanEmail.split("@")[0] : t.login.fallbackUser),
         companyName: isVerifiedDev
           ? "DEVELOPER SANDBOX"
           : (preferred.companyName || namaSyarikat || "SCHOOL ENTERPRISE"),
@@ -443,6 +447,7 @@ export default function LoginScreen({
           email: rawEmail,
           password,
           requestedRole: loginRole,
+          lang,
         });
         resolvedStatus = edgeRes.status;
         resolvedOk = edgeRes.success;
@@ -545,7 +550,7 @@ export default function LoginScreen({
             {
               id: fbUser.uid,
               username: fbUser.email?.split("@")[0] || "user",
-              fullName: fbUser.displayName || "Pengguna",
+              fullName: fbUser.displayName || t.login.fallbackUser,
               companyName: namaSyarikat || "SCHOOL ENTERPRISE",
               email: fbUser.email || firebaseCandidateEmail,
             },
@@ -631,6 +636,7 @@ export default function LoginScreen({
         const edgeRes = await edgeBootstrapAdmin({
           password: bootstrapPassword,
           email: loginEmail.trim().toLowerCase() || undefined,
+          lang,
         });
         resolvedOk = edgeRes.success;
         data = edgeRes;
@@ -747,6 +753,7 @@ export default function LoginScreen({
           companyName: company,
           password,
           email,
+          lang,
         });
         resolvedOk = edgeRes.success;
         data = edgeRes;
@@ -886,53 +893,15 @@ export default function LoginScreen({
       {/* Main Card Container */}
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden p-5 sm:p-8 lg:p-10 flex flex-col justify-between relative z-10 border border-slate-100 animate-scaleIn">
         <div>
-          {/* Top Bar: Quick Language Switcher */}
-          <div className="flex items-center justify-end pb-3 mb-2 border-b border-slate-100">
-
-            {/* Language Toggle Pill */}
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => {
-                  setLang("ms");
-                  onLanguageChange?.("ms");
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                  lang === "ms"
-                    ? "bg-[#0b3c7a] text-white shadow-2xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-                title="Bahasa Melayu"
-              >
-                BM
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setLang("en");
-                  onLanguageChange?.("en");
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                  lang === "en"
-                    ? "bg-[#0b3c7a] text-white shadow-2xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-                title="English"
-              >
-                EN
-              </button>
-            </div>
-          </div>
-
           {/* Official Logo Header */}
-          <div className="flex justify-center mb-3">
+          <div className="flex justify-center mb-3 mt-1">
             <div
               className="w-24 h-24 sm:w-28 sm:h-28 bg-white border border-slate-200 rounded-2xl flex items-center justify-center shadow-md overflow-hidden p-1.5 select-none"
-              title="SMARTCOST SISTEM"
+              title={t.login.logoTitle}
             >
               <img
                 src={smartcostLogo}
-                alt="Logo SMARTCOST SISTEM"
+                alt={t.login.logoAlt}
                 className="w-full h-full object-contain rounded-lg pointer-events-none"
                 referrerPolicy="no-referrer"
               />
@@ -1037,10 +1006,10 @@ export default function LoginScreen({
           {/* MODE 1: LOG MASUK (IMAGE 1 CONTINUOUS VERTICAL FORM) */}
           {mode === "login" && !adminBootstrapOpen && (
             <form onSubmit={handleLoginSubmit} className="mt-5 space-y-4">
-              {/* Field 1: Username / Nama Pengguna */}
+              {/* Field 1: Username */}
               <div>
                 <label className="block text-[10px] font-mono tracking-widest text-slate-500 uppercase mb-1.5 font-semibold">
-                  {lang === "en" ? "USERNAME / USER ID" : "USERNAME / NAMA PENGGUNA"}
+                  {t.login.usernameLabel}
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
@@ -1066,16 +1035,16 @@ export default function LoginScreen({
                         setLoginRole(matching.role);
                       }
                     }}
-                    placeholder={lang === "en" ? "Enter your username..." : "Masukkan nama pengguna anda..."}
+                    placeholder={t.login.usernamePlaceholder}
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 focus:border-[#0b3c7a] rounded-xl text-sm font-medium text-slate-800 transition-all outline-hidden"
                   />
                 </div>
               </div>
 
-              {/* Field 2: Emel / Email (Pilihan) */}
+              {/* Field 2: Email (Optional) */}
               <div>
                 <label className="block text-[10px] font-mono tracking-widest text-slate-500 uppercase mb-1.5 font-semibold">
-                  EMEL / EMAIL <span className="text-slate-400 font-normal">(PILIHAN)</span>
+                  {t.login.emailLabel}
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
@@ -1104,10 +1073,10 @@ export default function LoginScreen({
                 </div>
               </div>
 
-              {/* Field 3: Jawatan / Peranan Log Masuk (RBAC) * */}
+              {/* Field 3: Login Role (RBAC) * */}
               <div>
                 <label className="block text-[10px] font-mono tracking-widest text-slate-500 uppercase mb-1.5 font-semibold">
-                  {lang === "en" ? "ROLE / LOGIN POSITION (RBAC) *" : "JAWATAN / PERANAN LOG MASUK (RBAC) *"}
+                  {t.login.roleLabel}
                 </label>
                 <select
                   value={loginRole}
@@ -1118,20 +1087,22 @@ export default function LoginScreen({
                     .filter(([key]) => key !== "developer")
                     .map(([key, def]) => (
                       <option key={key} value={key}>
-                        {def.title}
+                        {getLocalizedRoleDef(key as UserRole, def, lang).title}
                       </option>
                     ))}
                 </select>
                 <p className="text-[10px] text-slate-400 mt-1 italic">
-                  {lang === "en" ? "Active login role:" : "Peranan semasa log masuk:"}{" "}
-                  <strong className="text-slate-600 font-bold">{ROLE_DEFINITIONS[loginRole]?.title}</strong>
+                  {t.login.currentLoginRole}{" "}
+                  <strong className="text-slate-600 font-bold">
+                    {getLocalizedRoleDef(loginRole, ROLE_DEFINITIONS[loginRole] || ROLE_DEFINITIONS.admin, lang).title}
+                  </strong>
                 </p>
               </div>
 
-              {/* Field 4: Kata Laluan / Password */}
+              {/* Field 4: Password */}
               <div>
                 <label className="block text-[10px] font-mono tracking-widest text-slate-500 uppercase mb-1.5 font-semibold">
-                  {lang === "en" ? "PASSWORD" : "KATA LALUAN / PASSWORD"}
+                  {t.login.passwordLabel}
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
@@ -1228,7 +1199,7 @@ export default function LoginScreen({
                   <span>
                     {isProcessingGoogle
                       ? (googleNotice || (lang === "en" ? "Processing Google Sign-In..." : "Memproses Log Masuk Google..."))
-                      : "Log Masuk Google (Firebase)"}
+                      : t.login.googleLoginLabel}
                   </span>
                 </button>
 
@@ -1369,7 +1340,7 @@ export default function LoginScreen({
                     {t.login.emailLabel}
                   </label>
                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
-                    {lang === "en" ? "OPTIONAL" : "PILIHAN / OPTIONAL"}
+                    {lang === "en" ? "OPTIONAL" : "PILIHAN"}
                   </span>
                 </div>
                 <div className="relative">
@@ -1587,14 +1558,14 @@ export default function LoginScreen({
                           {acc.companyName}
                         </h4>
                         <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold">
-                          {ROLE_DEFINITIONS[acc.role || "admin"]?.title || "Admin"}
+                          {getLocalizedRoleDef(acc.role || "admin", ROLE_DEFINITIONS[acc.role || "admin"] || ROLE_DEFINITIONS.admin, lang).title}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mt-1 flex items-center gap-2 font-mono">
-                        <span>Username: <strong className="text-slate-800">{acc.username}</strong></span>
+                        <span>{t.login.username}: <strong className="text-slate-800">{acc.username}</strong></span>
                         <span>&bull;</span>
                         <span className="text-[10px] text-slate-400">
-                          {new Date(acc.registeredAt).toLocaleDateString()}
+                          {formatLocalizedDate(acc.registeredAt, lang)}
                         </span>
                       </p>
                     </div>

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import { Language, getTranslation, getStoredLanguage, formatLocalizedNumber, formatLocalizedDate } from "../utils/i18n";
 import { formatCurrencyRM } from "../utils/financialColors";
 
 interface StatementSheetProps {
@@ -145,10 +145,10 @@ export default function StatementSheet({
   };
 
   const unitWord = isEn ? "units" : "unit";
-  const formatUnits = (val: number) => `${val.toLocaleString("en-US")} ${unitWord}`;
+  const formatUnits = (val: number) => `${formatLocalizedNumber(val, lang)} ${unitWord}`;
   const formatUnitDiff = (diff: number) => {
     if (Math.abs(diff) <= 0.0001) return `0 ${unitWord}`;
-    const absStr = Math.abs(diff).toLocaleString("en-US");
+    const absStr = formatLocalizedNumber(Math.abs(diff), lang);
     return `${diff > 0 ? "+" : "-"}${absStr} ${unitWord}`;
   };
 
@@ -336,7 +336,7 @@ export default function StatementSheet({
   const avgPriceStd = Q_std > 0 ? revenueStd / Q_std : 0;
   const avgPriceAct = Q_act > 0 ? revenueAct / Q_act : 0;
 
-  const printDateFormatted = new Date().toLocaleDateString(isEn ? "en-US" : "ms-MY", {
+  const printDateFormatted = formatLocalizedDate(new Date(), lang, {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -539,7 +539,7 @@ export default function StatementSheet({
   const buildStatementPdfBlob = async (): Promise<Blob> => {
     const element = printableRef.current;
     if (!element) {
-      throw new Error("Statement element unavailable");
+      throw new Error(t.statement.elementUnavailable);
     }
 
     if (document.fonts && document.fonts.ready) {
@@ -684,7 +684,7 @@ export default function StatementSheet({
       const link = document.createElement("a");
       const safeName = currentSyarikat.toLowerCase().replace(/[^a-z0-9]/g, "_");
       link.href = url;
-      link.download = `penyata_untung_rugi_${safeName}.pdf`;
+      link.download = `${t.statement.pdfFilenamePrefix}_${safeName}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

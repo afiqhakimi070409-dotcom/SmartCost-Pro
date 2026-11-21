@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { KonfigurasiSistem, UserRole, ROLE_DEFINITIONS } from "../types";
 import { TemplatPerniagaan } from "../data/defaultTemplates";
-import { Language, getStoredLanguage } from "../utils/i18n";
+import { Language, getStoredLanguage, getTranslation, getLocalizedRoleDef, formatLocalizedDateTime, formatLocalizedTime } from "../utils/i18n";
 import {
   validateBackupContent,
   executeTemplatesImport,
@@ -97,6 +97,7 @@ export default function DeveloperConsoleSheet({
   initialTab,
 }: DeveloperConsoleSheetProps) {
   const lang: Language = systemLang || getStoredLanguage();
+  const t = getTranslation(lang);
   const [activeConsoleTab, setActiveConsoleTab] = useState<"databases" | "simulator" | "backup" | "infra">(initialTab || "databases");
 
   useEffect(() => {
@@ -411,7 +412,7 @@ export default function DeveloperConsoleSheet({
       const link = document.createElement("a");
       link.href = url;
       const slug = target.companyName.toLowerCase().replace(/[^a-z0-9]/g, "_") || "database";
-      link.download = `sandaran_${slug}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `${lang === "en" ? "backup_" : "sandaran_"}${slug}_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -495,15 +496,21 @@ export default function DeveloperConsoleSheet({
         const serverErrorText = typeof respData?.error === "string" && respData.error.trim() ? respData.error.trim() : "";
         let msg: string;
         if (!isRealDeveloperSuperuser) {
-          msg = "Padam ditolak oleh pelayan.";
+          msg = lang === "en" ? "Delete rejected by server." : "Padam ditolak oleh pelayan.";
         } else if (serverErrorText) {
           msg = serverErrorText;
         } else if (delResp.status === 401) {
-          msg = "Padam ditolak: Sesi pembangun telah tamat tempoh. Sila sahkan semula.";
+          msg = lang === "en"
+            ? "Delete rejected: Developer session has expired. Please re-authenticate."
+            : "Padam ditolak: Sesi pembangun telah tamat tempoh. Sila sahkan semula.";
         } else if (delResp.status === 403) {
-          msg = "Padam ditolak: Tiada kebenaran pembangun yang sah untuk operasi ini.";
+          msg = lang === "en"
+            ? "Delete rejected: Missing valid developer authorization for this operation."
+            : "Padam ditolak: Tiada kebenaran pembangun yang sah untuk operasi ini.";
         } else {
-          msg = "Padam ditolak: Ralat pelayan. Cuba lagi.";
+          msg = lang === "en"
+            ? "Delete rejected: Server error. Please try again."
+            : "Padam ditolak: Ralat pelayan. Cuba lagi.";
         }
         throw new Error(msg);
       }
@@ -519,8 +526,10 @@ export default function DeveloperConsoleSheet({
       if (!fsResult.ok) {
         throw new Error(
           isRealDeveloperSuperuser
-            ? `Padam ditolak: ${fsResult.errorStep || "Ditolak oleh peraturan pangkalan data."}`
-            : "Padam ditolak oleh pelayan."
+            ? (lang === "en"
+                ? `Delete rejected: ${fsResult.errorStep || "Rejected by database security rules."}`
+                : `Padam ditolak: ${fsResult.errorStep || "Ditolak oleh peraturan pangkalan data."}`)
+            : (lang === "en" ? "Delete rejected by server." : "Padam ditolak oleh pelayan.")
         );
       }
 
@@ -566,7 +575,7 @@ export default function DeveloperConsoleSheet({
 
       setDbFeedback({
         type: "success",
-        msg: respData.message || "Database dipadam.",
+        msg: respData.message || (lang === "en" ? "Database deleted." : "Database dipadam."),
       });
       setDeleteTargetDb(null);
       setDeleteConfirmInput("");
@@ -577,7 +586,7 @@ export default function DeveloperConsoleSheet({
     } catch (err: any) {
       setDeleteDialogFeedback({
         type: "error",
-        msg: err?.message || "Sebahagian data gagal dipadam: pelayan.",
+        msg: err?.message || (lang === "en" ? "Some data failed to delete on the server." : "Sebahagian data gagal dipadam: pelayan."),
       });
     } finally {
       setIsDeletingDb(false);
@@ -590,7 +599,7 @@ export default function DeveloperConsoleSheet({
     if (!isRealDeveloperSuperuser) {
       setDeleteDialogFeedback({
         type: "error",
-        msg: "Padam ditolak oleh pelayan.",
+        msg: lang === "en" ? "Delete rejected by server." : "Padam ditolak oleh pelayan.",
       });
       return;
     }
@@ -774,7 +783,7 @@ export default function DeveloperConsoleSheet({
   // 1. EXPORT BACKUP FUNCTION
   const handleExportBackup = async () => {
     if (!isAdminAuthorized) {
-      alert(lang === "en" ? "Access Denied: Admin permissions required." : "Akses Ditolak: Memerlukan kebenaran pentadbir.");
+      setErrorMessage(lang === "en" ? "Access Denied: Admin permissions required." : "Akses Ditolak: Memerlukan kebenaran pentadbir.");
       return;
     }
 
@@ -1004,7 +1013,7 @@ export default function DeveloperConsoleSheet({
         addedCount: importResult.addedCount,
         updatedCount: importResult.updatedCount,
         skippedCount: importResult.skippedCount,
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: formatLocalizedTime(new Date(), lang),
       });
 
       const auditMsg = lang === "en"
@@ -1098,7 +1107,7 @@ export default function DeveloperConsoleSheet({
 
             <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold rounded border border-emerald-400/30 flex items-center gap-1">
               <ShieldCheck className="w-3 h-3 text-emerald-400" />
-              {isAdminScoped ? "TERHAD PERNIAGAAN SENDIRI" : "SUPERUSER"}
+              {isAdminScoped ? (lang === "en" ? "OWN BUSINESS ONLY" : "TERHAD PERNIAGAAN SENDIRI") : "SUPERUSER"}
             </span>
           </div>
 
@@ -1139,7 +1148,7 @@ export default function DeveloperConsoleSheet({
               {lang === "en" ? "Scope" : "Skop"}
             </span>
             <span className="text-xs font-bold text-slate-200 block truncate">
-              {isAdminScoped ? "TERASING" : "UNIVERSAL"}
+              {isAdminScoped ? (lang === "en" ? "ISOLATED" : "TERASING") : "UNIVERSAL"}
             </span>
           </div>
         </div>
@@ -1221,7 +1230,7 @@ export default function DeveloperConsoleSheet({
             }`}
           >
             <Server className="w-3.5 h-3.5 text-emerald-400" />
-            <span>SERVER &amp; DATABASE MANAGEMENT</span>
+            <span>{lang === "en" ? "SERVER & DATABASE MANAGEMENT" : "PENGURUSAN PELAYAN & PANGKALAN DATA"}</span>
           </button>
         )}
       </div>
@@ -1255,7 +1264,7 @@ export default function DeveloperConsoleSheet({
                 type="button"
                 onClick={loadAllDatabases}
                 className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs transition-all cursor-pointer border border-slate-200"
-                title="Refresh"
+                title={lang === "en" ? "Refresh" : "Muat Semula"}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
@@ -1385,7 +1394,7 @@ export default function DeveloperConsoleSheet({
                         </div>
 
                         <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 font-mono flex-wrap">
-                          <span>Owner: <strong className="text-slate-700">{db.owner}</strong></span>
+                          <span>{lang === "en" ? "Owner:" : "Pemilik:"} <strong className="text-slate-700">{db.owner}</strong></span>
                           <span>&bull;</span>
                           <span>{db.productCount} {lang === "en" ? "products" : "produk"}</span>
                           <span>&bull;</span>
@@ -1431,7 +1440,7 @@ export default function DeveloperConsoleSheet({
                           type="button"
                           onClick={() => handleArchiveDb(db.dbKey, db.companyName, Boolean(db.isArchived))}
                           className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border border-slate-200"
-                          title={db.isArchived ? "Unarchive" : "Archive"}
+                          title={db.isArchived ? (lang === "en" ? "Unarchive" : "Nyah-arkib") : (lang === "en" ? "Archive" : "Arkib")}
                         >
                           {db.isArchived ? (
                             <ArchiveRestore className="w-3.5 h-3.5 text-purple-600" />
@@ -1619,7 +1628,7 @@ export default function DeveloperConsoleSheet({
               setIsDeletingDb(false);
               setDeleteDialogFeedback({
                 type: "error",
-                msg: "Pengesahan pembangun gagal.",
+                msg: lang === "en" ? "Developer authentication failed." : "Pengesahan pembangun gagal.",
               });
             }}
             onSuccess={() => {
@@ -1716,6 +1725,7 @@ export default function DeveloperConsoleSheet({
           {/* Role Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {Object.entries(ROLE_DEFINITIONS).map(([key, def]) => {
+              const locDef = getLocalizedRoleDef(key as UserRole, def, lang);
               const isSelected = currentRole === key;
               return (
                 <div
@@ -1730,10 +1740,10 @@ export default function DeveloperConsoleSheet({
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${def.badgeColor}`}>
-                        {def.title}
+                        {locDef.title}
                       </span>
                       <div className="text-xs font-bold text-slate-900 mt-1.5">
-                        {def.accessLevel}
+                        {locDef.accessLevel}
                       </div>
                     </div>
                     {isSelected && (
@@ -1743,11 +1753,11 @@ export default function DeveloperConsoleSheet({
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                    {def.visibility}
+                    {locDef.visibility}
                   </p>
                   <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                    <span>{def.canEditDailyData ? "Data: Boleh ubah" : "Data: Baca sahaja"}</span>
-                    <span>{def.canEditSettings ? "Tetapan: Penuh" : "Tetapan: Terhad"}</span>
+                    <span>{def.canEditDailyData ? t.devConsole.dataMutable : (lang === "en" ? "Data: Read-only" : "Data: Baca sahaja")}</span>
+                    <span>{def.canEditSettings ? t.devConsole.settingsFull : (lang === "en" ? "Settings: Restricted" : "Tetapan: Terhad")}</span>
                   </div>
                 </div>
               );
@@ -1841,7 +1851,7 @@ export default function DeveloperConsoleSheet({
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Download className="w-4 h-4 text-blue-600" />
-                  <span>{lang === "en" ? "1. Export Business Backup (Eksport Sandaran)" : "1. Eksport Sandaran Data Perniagaan"}</span>
+                  <span>{lang === "en" ? "1. Export Business Backup" : "1. Eksport Sandaran Data Perniagaan"}</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {lang === "en"
@@ -1901,7 +1911,7 @@ export default function DeveloperConsoleSheet({
             <div className="pb-3 border-b border-slate-100">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Upload className="w-4 h-4 text-blue-600" />
-                <span>{lang === "en" ? "2. Import & Restore Backup (Import & Pemulihan)" : "2. Import & Pemulihan Sandaran Data"}</span>
+                <span>{lang === "en" ? "2. Import & Restore Backup" : "2. Import & Pemulihan Sandaran Data"}</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {lang === "en"
@@ -2166,7 +2176,7 @@ export default function DeveloperConsoleSheet({
                     {auditLogs.map((log) => (
                       <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-2.5 pr-2 text-slate-500 whitespace-nowrap text-[11px]">
-                          {new Date(log.timestamp).toLocaleString([], {
+                          {formatLocalizedDateTime(log.timestamp, lang, {
                             month: "short",
                             day: "numeric",
                             hour: "2-digit",
@@ -2215,10 +2225,12 @@ export default function DeveloperConsoleSheet({
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">
-                    Developer Superuser: Raw Storage Dump
+                    {t.devConsole.rawStorageTitle}
                   </h4>
                   <p className="text-[11px] text-slate-500">
-                    Export entire raw key-value store across all company partitions.
+                    {lang === "en"
+                      ? "Export entire raw key-value store across all company partitions."
+                      : "Eksport keseluruhan simpanan kunci-nilai mentah merentasi semua pangkalan data syarikat."}
                   </p>
                 </div>
                 <button
@@ -2227,7 +2239,7 @@ export default function DeveloperConsoleSheet({
                   className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Download Master Dump</span>
+                  <span>{lang === "en" ? "Download Master Dump" : "Muat Turun Storan Mentah"}</span>
                 </button>
               </div>
             </section>
@@ -2287,8 +2299,8 @@ export default function DeveloperConsoleSheet({
                   <span>{lang === "en" ? "Overlapping Records:" : "Produk Bertindih:"}</span>
                   <span className="font-bold text-amber-600">
                     {importMode === "upsert"
-                      ? `${validationResult.analysis.existingConflictsCount} (akan dikemas kini)`
-                      : `${validationResult.analysis.existingConflictsCount} (akan dilangkau)`}
+                      ? `${validationResult.analysis.existingConflictsCount} ${t.devConsole.willBeUpdated}`
+                      : `${validationResult.analysis.existingConflictsCount} ${lang === "en" ? "(will be skipped)" : "(akan dilangkau)"}`}
                   </span>
                 </div>
               </div>

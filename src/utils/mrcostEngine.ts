@@ -4,6 +4,7 @@
  */
 
 import type { BahanMentah, BuruhLangsung, OverheadBerubah, OverheadTetap, KonfigurasiSistem } from "../types.ts";
+import { tr, getLocale, type Language } from "./i18n.ts";
 
 // ============================================================================
 // 1. KECERDASAN UNIT DAN PENUKARAN (UNIT INTELLIGENCE & CONVERSION ENGINE)
@@ -111,7 +112,8 @@ export interface UnitConversionResult {
 export function convertUnit(
   value: number,
   fromUnit: string,
-  toUnit: string
+  toUnit: string,
+  lang: Language = "en"
 ): UnitConversionResult {
   const normFrom = normalizeUnit(fromUnit);
   const normTo = normalizeUnit(toUnit);
@@ -121,14 +123,23 @@ export function convertUnit(
       success: true,
       ratio: 1,
       convertedValue: value,
-      explanation: `${value} ${normFrom.canonical} bersamaan ${value} ${normTo.canonical} (unit sama).`,
+      explanation: tr(lang, "utils.unitSame", {
+        value,
+        from: normFrom.canonical,
+        to: normTo.canonical,
+      }),
     };
   }
 
   if (normFrom.category !== normTo.category || normFrom.category === "unknown") {
     return {
       success: false,
-      explanation: `Unit '${fromUnit}' (${normFrom.category}) dan '${toUnit}' (${normTo.category}) tidak serasi untuk penukaran terus tanpa faktor ketumpatan atau bilangan pek khusus.`,
+      explanation: tr(lang, "utils.unitIncompatible", {
+        from: fromUnit,
+        fromCat: normFrom.category,
+        to: toUnit,
+        toCat: normTo.category,
+      }),
     };
   }
 
@@ -139,7 +150,7 @@ export function convertUnit(
   if (!defFrom || !defTo) {
     return {
       success: false,
-      explanation: `Definisi unit untuk '${fromUnit}' atau '${toUnit}' tidak ditemui dalam pustaka piawai.`,
+      explanation: tr(lang, "utils.unitNotFound", { from: fromUnit, to: toUnit }),
     };
   }
 
@@ -152,15 +163,18 @@ export function convertUnit(
     success: true,
     ratio,
     convertedValue,
-    explanation: `${value} ${defFrom.canonical} bersamaan dengan ${convertedValue.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${defTo.canonical}. (1 ${defFrom.canonical} = ${ratio} ${defTo.canonical})`,
+    explanation: tr(lang, "utils.unitConverted", {
+      value,
+      from: defFrom.canonical,
+      converted: convertedValue.toLocaleString(getLocale(lang), { maximumFractionDigits: 4 }),
+      to: defTo.canonical,
+      ratio,
+    }),
   };
 }
 
 /**
  * Solves standard material costing when purchase unit differs from recipe/usage unit.
- * Example (Ujian C):
- * Purchase 1 kg @ RM20.00. Usage is 500 g.
- * Result: RM 10.00.
  */
 export function calculateUsageCostFromPurchase({
   purchasePrice,
@@ -168,12 +182,14 @@ export function calculateUsageCostFromPurchase({
   purchaseUnit,
   usageQty,
   usageUnit,
+  lang = "en",
 }: {
   purchasePrice: number;
   purchaseQty?: number;
   purchaseUnit: string;
   usageQty: number;
   usageUnit: string;
+  lang?: Language;
 }): {
   success: boolean;
   cost: number;
@@ -185,11 +201,11 @@ export function calculateUsageCostFromPurchase({
       success: false,
       cost: 0,
       pricePerUsageUnit: 0,
-      explanation: "Kuantiti pembelian mestilah melebihi sifar.",
+      explanation: tr(lang, "utils.purchaseQtyZero"),
     };
   }
 
-  const conversion = convertUnit(usageQty, usageUnit, purchaseUnit);
+  const conversion = convertUnit(usageQty, usageUnit, purchaseUnit, lang);
 
   if (!conversion.success || conversion.convertedValue === undefined) {
     return {
@@ -200,7 +216,7 @@ export function calculateUsageCostFromPurchase({
     };
   }
 
-  const effectivePurchaseRate = purchasePrice / purchaseQty; // Harga seunit belian
+  const effectivePurchaseRate = purchasePrice / purchaseQty;
   const cost = conversion.convertedValue * effectivePurchaseRate;
   const pricePerUsageUnit = usageQty > 0 ? cost / usageQty : 0;
 
@@ -208,7 +224,14 @@ export function calculateUsageCostFromPurchase({
     success: true,
     cost: Number(cost.toFixed(4)),
     pricePerUsageUnit: Number(pricePerUsageUnit.toFixed(4)),
-    explanation: `Kadar belian: RM${effectivePurchaseRate.toFixed(2)}/${purchaseUnit}. Penggunaan ${usageQty} ${usageUnit} bersamaan ${conversion.convertedValue} ${purchaseUnit}. Kos bahan: RM${cost.toFixed(2)}.`,
+    explanation: tr(lang, "utils.usageCostExplanation", {
+      rate: effectivePurchaseRate.toFixed(2),
+      pUnit: purchaseUnit,
+      uQty: usageQty,
+      uUnit: usageUnit,
+      converted: conversion.convertedValue,
+      cost: cost.toFixed(2),
+    }),
   };
 }
 
@@ -442,7 +465,7 @@ export interface TestResultDetails {
   ujian: string;
   input: Record<string, any>;
   hasil: any;
-  status: "LULUS" | "GAGAL";
+  status: "PASS" | "FAIL" | "LULUS" | "GAGAL";
   catatan: string;
 }
 
@@ -452,16 +475,23 @@ export interface TestResultDetails {
  * RM100 untuk 10 unit => RM10.00 seunit.
  * Melindungi dari pembahagian dengan sifar!
  */
-export function kiraKosSeunit(totalCost: number, totalUnits: number): {
+export function kiraKosSeunit(
+  totalCost: number,
+  totalUnits: number,
+  lang: Language = "en"
+): {
   kosSeunit: number;
   bolehDikira: boolean;
   penjelasan: string;
 } {
+  const isEn = lang === "en";
   if (totalUnits <= 0) {
     return {
       kosSeunit: 0,
       bolehDikira: false,
-      penjelasan: "Kuantiti pengeluaran ialah sifar atau tidak sah. Kos seunit tidak boleh dikira (mengelakkan pembahagian dengan sifar).",
+      penjelasan: isEn
+        ? "Production quantity is zero or invalid. Unit cost cannot be calculated (prevents division by zero)."
+        : "Kuantiti pengeluaran ialah sifar atau tidak sah. Kos seunit tidak boleh dikira (mengelakkan pembahagian dengan sifar).",
     };
   }
 
@@ -469,7 +499,9 @@ export function kiraKosSeunit(totalCost: number, totalUnits: number): {
   return {
     kosSeunit: Number(kosSeunit.toFixed(4)),
     bolehDikira: true,
-    penjelasan: `Jumlah kos RM${totalCost.toFixed(2)} dibahagi dengan ${totalUnits} unit = RM${kosSeunit.toFixed(2)} seunit.`,
+    penjelasan: isEn
+      ? `Total cost RM${totalCost.toFixed(2)} divided by ${totalUnits} units = RM${kosSeunit.toFixed(2)} per unit.`
+      : `Jumlah kos RM${totalCost.toFixed(2)} dibahagi dengan ${totalUnits} unit = RM${kosSeunit.toFixed(2)} seunit.`,
   };
 }
 
@@ -482,19 +514,23 @@ export function kiraKosSeunit(totalCost: number, totalUnits: number): {
  */
 export function kiraHargaDariSasaranMargin(
   unitCost: number,
-  targetMarginPercent: number
+  targetMarginPercent: number,
+  lang: Language = "en"
 ): {
   hargaJualan: number;
   keuntunganSeunit: number;
   marginSebenarPercent: number;
   penjelasan: string;
 } {
+  const isEn = lang === "en";
   if (targetMarginPercent >= 100) {
     return {
       hargaJualan: 0,
       keuntunganSeunit: 0,
       marginSebenarPercent: 0,
-      penjelasan: "Sasaran margin keuntungan tidak boleh mencecah 100% ke atas kerana formula Harga = Kos / (1 - Margin) memerlukan pembahagi melebihi sifar.",
+      penjelasan: isEn
+        ? "Target profit margin cannot reach 100% or above because Price = Cost / (1 - Margin) requires a positive divisor."
+        : "Sasaran margin keuntungan tidak boleh mencecah 100% ke atas kerana formula Harga = Kos / (1 - Margin) memerlukan pembahagi melebihi sifar.",
     };
   }
 
@@ -508,7 +544,9 @@ export function kiraHargaDariSasaranMargin(
     hargaJualan: hargaJualanRounded,
     keuntunganSeunit,
     marginSebenarPercent: Number(marginSebenarPercent.toFixed(2)),
-    penjelasan: `Formula: Harga Jualan = Kos / (1 - Margin%). Pengiraan: RM${unitCost.toFixed(2)} / (1 - ${marginDecimal.toFixed(2)}) = RM${unitCost.toFixed(2)} / ${(1 - marginDecimal).toFixed(2)} = RM${hargaJualanExact.toFixed(4)}... dibundarkan kepada RM${hargaJualanRounded.toFixed(2)}. Untung seunit: RM${keuntunganSeunit.toFixed(2)} (Margin: ${marginSebenarPercent.toFixed(1)}%).`,
+    penjelasan: isEn
+      ? `Formula: Selling Price = Cost / (1 - Margin%). Calculation: RM${unitCost.toFixed(2)} / (1 - ${marginDecimal.toFixed(2)}) = RM${unitCost.toFixed(2)} / ${(1 - marginDecimal).toFixed(2)} = RM${hargaJualanExact.toFixed(4)}... rounded to RM${hargaJualanRounded.toFixed(2)}. Unit profit: RM${keuntunganSeunit.toFixed(2)} (Margin: ${marginSebenarPercent.toFixed(1)}%).`
+      : `Formula: Harga Jualan = Kos / (1 - Margin%). Pengiraan: RM${unitCost.toFixed(2)} / (1 - ${marginDecimal.toFixed(2)}) = RM${unitCost.toFixed(2)} / ${(1 - marginDecimal).toFixed(2)} = RM${hargaJualanExact.toFixed(4)}... dibundarkan kepada RM${hargaJualanRounded.toFixed(2)}. Untung seunit: RM${keuntunganSeunit.toFixed(2)} (Margin: ${marginSebenarPercent.toFixed(1)}%).`,
   };
 }
 
@@ -518,12 +556,14 @@ export function kiraHargaDariSasaranMargin(
  */
 export function kiraKenaikanKos(
   kosAsal: number,
-  peratusKenaikan: number
+  peratusKenaikan: number,
+  lang: Language = "en"
 ): {
   kosBaharu: number;
   nilaiKenaikan: number;
   penjelasan: string;
 } {
+  const isEn = lang === "en";
   const kenaikanDecimal = peratusKenaikan / 100;
   const nilaiKenaikan = kosAsal * kenaikanDecimal;
   const kosBaharu = kosAsal + nilaiKenaikan;
@@ -531,70 +571,70 @@ export function kiraKenaikanKos(
   return {
     kosBaharu: Number(kosBaharu.toFixed(2)),
     nilaiKenaikan: Number(nilaiKenaikan.toFixed(2)),
-    penjelasan: `Kos asal RM${kosAsal.toFixed(2)} + kenaikan ${peratusKenaikan}% (RM${nilaiKenaikan.toFixed(2)}) = Kos baharu RM${kosBaharu.toFixed(2)}.`,
+    penjelasan: isEn
+      ? `Original cost RM${kosAsal.toFixed(2)} + ${peratusKenaikan}% increase (RM${nilaiKenaikan.toFixed(2)}) = New cost RM${kosBaharu.toFixed(2)}.`
+      : `Kos asal RM${kosAsal.toFixed(2)} + kenaikan ${peratusKenaikan}% (RM${nilaiKenaikan.toFixed(2)}) = Kos baharu RM${kosBaharu.toFixed(2)}.`,
   };
 }
 
 /**
  * Menjalankan siri Ujian Ketepatan (A, B, C, D, E) untuk pengesahan automatik.
  */
-export function jalankanUjianPengesahanMatematik(): TestResultDetails[] {
+export function jalankanUjianPengesahanMatematik(lang: Language = "en"): TestResultDetails[] {
   const ujian: TestResultDetails[] = [];
+  const passLabel = tr(lang, "mrcostAi.statusPass") as "PASS" | "LULUS";
+  const failLabel = tr(lang, "mrcostAi.statusFail") as "FAIL" | "GAGAL";
 
-  // Ujian A: Kos seunit RM100 untuk 10 unit => RM10.00
-  const resA = kiraKosSeunit(100, 10);
+  const resA = kiraKosSeunit(100, 10, lang);
   ujian.push({
-    ujian: "Ujian A — Kos Seunit",
+    ujian: tr(lang, "utils.testA"),
     input: { totalCost: 100, totalUnits: 10 },
     hasil: resA.kosSeunit,
-    status: Math.abs(resA.kosSeunit - 10.00) < 0.001 ? "LULUS" : "GAGAL",
-    catatan: `Hasil didapati: RM${resA.kosSeunit.toFixed(2)} (Jangkaan: RM10.00).`,
+    status: Math.abs(resA.kosSeunit - 10.00) < 0.001 ? passLabel : failLabel,
+    catatan: tr(lang, "utils.testResultNote", { actual: resA.kosSeunit.toFixed(2), expected: "10.00" }),
   });
 
-  // Ujian B: Margin 30% pada kos RM10.00 => RM14.29
-  const resB = kiraHargaDariSasaranMargin(10, 30);
+  const resB = kiraHargaDariSasaranMargin(10, 30, lang);
   ujian.push({
-    ujian: "Ujian B — Margin Keuntungan",
+    ujian: tr(lang, "utils.testB"),
     input: { unitCost: 10, targetMarginPercent: 30 },
     hasil: resB.hargaJualan,
-    status: Math.abs(resB.hargaJualan - 14.29) < 0.01 ? "LULUS" : "GAGAL",
-    catatan: `Hasil didapati: RM${resB.hargaJualan.toFixed(2)} (Jangkaan: RM14.29 berasaskan RM10 / 0.70).`,
+    status: Math.abs(resB.hargaJualan - 14.29) < 0.01 ? passLabel : failLabel,
+    catatan: tr(lang, "utils.testBNote", { actual: resB.hargaJualan.toFixed(2) }),
   });
 
-  // Ujian C: Beli 1 kg @ RM20.00, guna 500 g => RM10.00
   const resC = calculateUsageCostFromPurchase({
     purchasePrice: 20,
     purchaseQty: 1,
     purchaseUnit: "kg",
     usageQty: 500,
     usageUnit: "g",
+    lang,
   });
   ujian.push({
-    ujian: "Ujian C — Penukaran Unit",
+    ujian: tr(lang, "utils.testC"),
     input: { purchase: "1 kg @ RM20.00", usage: "500 g" },
     hasil: resC.cost,
-    status: Math.abs(resC.cost - 10.00) < 0.001 ? "LULUS" : "GAGAL",
-    catatan: `Hasil didapati: RM${resC.cost.toFixed(2)} (Jangkaan: RM10.00).`,
+    status: Math.abs(resC.cost - 10.00) < 0.001 ? passLabel : failLabel,
+    catatan: tr(lang, "utils.testResultNote", { actual: resC.cost.toFixed(2), expected: "10.00" }),
   });
 
-  // Ujian D: Kenaikan kos RM100 sebanyak 15% => RM115.00
-  const resD = kiraKenaikanKos(100, 15);
+  const resD = kiraKenaikanKos(100, 15, lang);
   ujian.push({
-    ujian: "Ujian D — Kenaikan Kos",
+    ujian: tr(lang, "utils.testD"),
     input: { kosAsal: 100, peratusKenaikan: 15 },
     hasil: resD.kosBaharu,
-    status: Math.abs(resD.kosBaharu - 115.00) < 0.001 ? "LULUS" : "GAGAL",
-    catatan: `Hasil didapati: RM${resD.kosBaharu.toFixed(2)} (Jangkaan: RM115.00).`,
+    status: Math.abs(resD.kosBaharu - 115.00) < 0.001 ? passLabel : failLabel,
+    catatan: tr(lang, "utils.testResultNote", { actual: resD.kosBaharu.toFixed(2), expected: "115.00" }),
   });
 
-  // Ujian E: Kuantiti pengeluaran sifar tidak membahagi dengan sifar
-  const resE = kiraKosSeunit(100, 0);
+  const resE = kiraKosSeunit(100, 0, lang);
   ujian.push({
-    ujian: "Ujian E — Data Tidak Lengkap / Kuantiti Sifar",
+    ujian: tr(lang, "utils.testE"),
     input: { totalCost: 100, totalUnits: 0 },
-    hasil: resE.bolehDikira ? resE.kosSeunit : "Tidak dibenarkan (Selamat)",
-    status: !resE.bolehDikira && !isNaN(resE.kosSeunit) ? "LULUS" : "GAGAL",
-    catatan: "Sistem berjaya mengesan kuantiti 0 dan menghalang pembahagian dengan sifar secara selamat.",
+    hasil: resE.bolehDikira ? resE.kosSeunit : tr(lang, "utils.testEResultSafe"),
+    status: !resE.bolehDikira && !isNaN(resE.kosSeunit) ? passLabel : failLabel,
+    catatan: tr(lang, "utils.testENote"),
   });
 
   return ujian;
@@ -648,6 +688,7 @@ export function janaSimulasiBerasingan({
   perubahanHargaJualan,
   perubahanKuantitiJualan,
   peratusPerubahanBahan,
+  language = "en",
 }: {
   tajuk: string;
   config: KonfigurasiSistem;
@@ -655,14 +696,15 @@ export function janaSimulasiBerasingan({
   buruhLangsung: BuruhLangsung[];
   overheadBerubah: OverheadBerubah[];
   overheadTetap: OverheadTetap[];
-  perubahanHargaJualan?: number; // Cth: RM 3.00
-  perubahanKuantitiJualan?: number; // Cth: 1200
-  peratusPerubahanBahan?: number; // Cth: +15% untuk tepung
+  perubahanHargaJualan?: number;
+  perubahanKuantitiJualan?: number;
+  peratusPerubahanBahan?: number;
+  language?: Language;
 }): CadanganSimulasi {
+  const currency = config.currency || "RM";
   const Q_std = config.sasaranKuantitiStandard || 1;
   const P_std = config.hargaJualanStandard || 0;
 
-  // Asal
   const kosBahanStd = bahanMentah.reduce((acc, b) => acc + (b.stdKuantitiPerUnit * b.stdHargaPerUnit), 0);
   const kosBuruhStd = buruhLangsung.reduce((acc, l) => acc + (l.stdJamPerUnit * l.stdKadarPerJam), 0);
   const kosOHBStd = overheadBerubah.reduce((acc, o) => acc + o.stdKosPerUnit, 0);
@@ -675,7 +717,6 @@ export function janaSimulasiBerasingan({
   const marginAsal = P_std > 0 ? ((P_std - kosBerubahStd) / P_std) * 100 : 0;
   const bepUnitAsal = (P_std - kosBerubahStd) > 0 ? kosTetapStd / (P_std - kosBerubahStd) : 0;
 
-  // Simulasi
   const P_sim = perubahanHargaJualan !== undefined ? perubahanHargaJualan : P_std;
   const Q_sim = perubahanKuantitiJualan !== undefined ? perubahanKuantitiJualan : Q_std;
   const faktorBahan = peratusPerubahanBahan !== undefined ? 1 + (peratusPerubahanBahan / 100) : 1;
@@ -694,7 +735,12 @@ export function janaSimulasiBerasingan({
     tajuk,
     tarikhDibuat: new Date(),
     status: "cadangan_berasingan",
-    ringkasanPerubahan: `Simulasi: Harga RM${P_sim.toFixed(2)}, Kuantiti ${Q_sim} unit, Perubahan bahan: ${peratusPerubahanBahan !== undefined ? `${peratusPerubahanBahan}%` : "0%"}.`,
+    ringkasanPerubahan: tr(language, "utils.simSummary", {
+      currency,
+      price: P_sim.toFixed(2),
+      qty: Q_sim,
+      pct: peratusPerubahanBahan !== undefined ? `${peratusPerubahanBahan}%` : "0%",
+    }),
     dataAsal: {
       hargaJualan: P_std,
       kosBerubahSeunit: Number(kosBerubahStd.toFixed(2)),
@@ -718,14 +764,14 @@ export function janaSimulasiBerasingan({
     },
     cadanganTindakan: [
       untungSim >= untungAsal
-        ? `Langkah ini berpotensi meningkatkan keuntungan sebanyak RM${(untungSim - untungAsal).toFixed(2)}/minggu.`
-        : `Langkah ini mengurangkan keuntungan sebanyak RM${Math.abs(untungSim - untungAsal).toFixed(2)}/minggu. Perlu langkah mitigasi kos.`,
-      `Semak sama ada volum sasaran ${Q_sim} unit boleh dicapai oleh kapasiti pasaran.`,
+        ? tr(language, "utils.simActionIncrease", { currency, diff: (untungSim - untungAsal).toFixed(2) })
+        : tr(language, "utils.simActionDecrease", { currency, diff: Math.abs(untungSim - untungAsal).toFixed(2) }),
+      tr(language, "utils.simActionVolume", { qty: Q_sim }),
     ],
     andaian: [
-      "Kualiti dan resipi produk asas tidak berubah.",
-      "Kos tetap mingguan kekal tidak berubah dalam jangka masa pendek.",
-      "Hasil simulasi disimpan sebagai cadangan berasingan dan TIDAK mengubah rekod rasmi.",
+      tr(language, "utils.simAssumption1"),
+      tr(language, "utils.simAssumption2"),
+      tr(language, "utils.simAssumption3"),
     ],
   };
 }
@@ -748,15 +794,19 @@ export function kenalPastiPeluangPenjimatan({
   buruhLangsung = [],
   overheadBerubah = [],
   kuantitiSebenar = 0,
+  language = "en",
+  currency = "RM",
 }: {
   bahanMentah: BahanMentah[];
   buruhLangsung: BuruhLangsung[];
   overheadBerubah: OverheadBerubah[];
   kuantitiSebenar: number;
+  language?: Language;
+  currency?: string;
 }): PeluangPenjimatanKos[] {
   const peluang: PeluangPenjimatanKos[] = [];
+  const isEn = language === "en";
 
-  // 1. Semak pembaziran kuantiti bahan (Adverse Usage Variance)
   bahanMentah.forEach((b) => {
     const stdBenar = b.stdKuantitiPerUnit * kuantitiSebenar;
     const lebihanKuantiti = b.sebenarKuantitiJumlah - stdBenar;
@@ -764,65 +814,103 @@ export function kenalPastiPeluangPenjimatan({
       const kosLebihan = lebihanKuantiti * b.stdHargaPerUnit;
       if (kosLebihan >= 5) {
         peluang.push({
-          kategori: "Pembaziran Bahan Mentah (Usage Variance)",
-          masalah: `Penggunaan bahan '${b.nama}' melebihi formula standard sebanyak ${lebihanKuantiti.toFixed(2)} ${b.unit}.`,
-          buktiNilai: `Kuantiti dibenarkan standard: ${stdBenar.toFixed(2)} ${b.unit} vs Kuantiti sebenar: ${b.sebenarKuantitiJumlah.toFixed(2)} ${b.unit} (Varians merugikan: RM${kosLebihan.toFixed(2)}).`,
-          tindakan: "Laksanakan kawalan porsi yang ketat (portion control scoops/scales) dan periksa kadar sisa buangan di stesen kerja.",
-          anggaranPenjimatan: `Penjimatan berpotensi sehingga RM${kosLebihan.toFixed(2)}/minggu jika mematuhi resipi standard.`,
-          andaian: "Kualiti dan rasa produk tidak terjejas dengan porsi standard.",
+          kategori: tr(language, "utils.savingCatUsage"),
+          masalah: isEn
+            ? `Usage of '${b.nama}' exceeded standard recipe by ${lebihanKuantiti.toFixed(2)} ${b.unit}.`
+            : `Penggunaan bahan '${b.nama}' melebihi formula piawai sebanyak ${lebihanKuantiti.toFixed(2)} ${b.unit}.`,
+          buktiNilai: isEn
+            ? `Standard allowed: ${stdBenar.toFixed(2)} ${b.unit} vs Actual used: ${b.sebenarKuantitiJumlah.toFixed(2)} ${b.unit} (Unfavorable variance: ${currency}${kosLebihan.toFixed(2)}).`
+            : `Kuantiti dibenarkan piawai: ${stdBenar.toFixed(2)} ${b.unit} vs Kuantiti sebenar: ${b.sebenarKuantitiJumlah.toFixed(2)} ${b.unit} (Perbezaan merugikan: ${currency}${kosLebihan.toFixed(2)}).`,
+          tindakan: isEn
+            ? "Enforce strict portion control (measuring scoops/scales) and audit workstation waste."
+            : "Laksanakan kawalan porsi yang ketat (sudu penyukat/penimbang) dan periksa kadar sisa buangan di stesen kerja.",
+          anggaranPenjimatan: isEn
+            ? `Potential savings up to ${currency}${kosLebihan.toFixed(2)}/week by following standard recipe.`
+            : `Penjimatan berpotensi sehingga ${currency}${kosLebihan.toFixed(2)}/minggu jika mematuhi resipi piawai.`,
+          andaian: isEn
+            ? "Product quality and taste remain unaffected under standard portioning."
+            : "Kualiti dan rasa produk tidak terjejas dengan porsi piawai.",
         });
       }
     }
   });
 
-  // 2. Semak lonjakan harga belian bahan (Adverse Price Variance)
   bahanMentah.forEach((b) => {
     const bezaHarga = b.sebenarHargaPerUnit - b.stdHargaPerUnit;
     if (bezaHarga > 0.01 && b.sebenarKuantitiJumlah > 0) {
       const jumlahKerugianHarga = bezaHarga * b.sebenarKuantitiJumlah;
       if (jumlahKerugianHarga >= 10) {
         peluang.push({
-          kategori: "Peningkatan Kos Bahan Mentah (Price Variance)",
-          masalah: `Harga belian seunit '${b.nama}' meningkat sebanyak RM${bezaHarga.toFixed(2)}/${b.unit}.`,
-          buktiNilai: `Harga standard RM${b.stdHargaPerUnit.toFixed(2)} vs Harga belian sebenar RM${b.sebenarHargaPerUnit.toFixed(2)} (Kesan kos tambahan: RM${jumlahKerugianHarga.toFixed(2)}).`,
-          tindakan: "Runding pembelian pukal (bulk buying discount), dapatkan sebut harga daripada 2 pembekal alternatif, atau buat kontrak harga tetap.",
-          anggaranPenjimatan: `Penjimatan anggaran RM${(jumlahKerugianHarga * 0.5).toFixed(2)} hingga RM${jumlahKerugianHarga.toFixed(2)}/minggu jika harga dapat distabilkan.`,
-          andaian: "Pembekal alternatif menawarkan kualiti gred bahan yang setara.",
+          kategori: tr(language, "utils.savingCatPrice"),
+          masalah: isEn
+            ? `Purchase price per unit for '${b.nama}' rose by ${currency}${bezaHarga.toFixed(2)}/${b.unit}.`
+            : `Harga belian seunit '${b.nama}' meningkat sebanyak ${currency}${bezaHarga.toFixed(2)}/${b.unit}.`,
+          buktiNilai: isEn
+            ? `Standard price ${currency}${b.stdHargaPerUnit.toFixed(2)} vs Actual price ${currency}${b.sebenarHargaPerUnit.toFixed(2)} (Extra cost impact: ${currency}${jumlahKerugianHarga.toFixed(2)}).`
+            : `Harga piawai ${currency}${b.stdHargaPerUnit.toFixed(2)} vs Harga belian sebenar ${currency}${b.sebenarHargaPerUnit.toFixed(2)} (Kesan kos tambahan: ${currency}${jumlahKerugianHarga.toFixed(2)}).`,
+          tindakan: isEn
+            ? "Negotiate bulk purchasing discounts, request quotes from 2 alternative suppliers, or establish fixed-price contracts."
+            : "Runding diskaun pembelian pukal, dapatkan sebut harga daripada 2 pembekal alternatif, atau buat kontrak harga tetap.",
+          anggaranPenjimatan: isEn
+            ? `Estimated savings of ${currency}${(jumlahKerugianHarga * 0.5).toFixed(2)} to ${currency}${jumlahKerugianHarga.toFixed(2)}/week once pricing is stabilized.`
+            : `Penjimatan anggaran ${currency}${(jumlahKerugianHarga * 0.5).toFixed(2)} hingga ${currency}${jumlahKerugianHarga.toFixed(2)}/minggu jika harga dapat distabilkan.`,
+          andaian: isEn
+            ? "Alternative suppliers offer equivalent ingredient grade and quality."
+            : "Pembekal alternatif menawarkan kualiti gred bahan yang setara.",
         });
       }
     }
   });
 
-  // 3. Semak kecekapan buruh
   buruhLangsung.forEach((bl) => {
     const stdJamDibenarkan = bl.stdJamPerUnit * kuantitiSebenar;
     const lebihanJam = bl.sebenarJamJumlah - stdJamDibenarkan;
     if (lebihanJam > 0.5 && bl.stdKadarPerJam > 0) {
       const kosLebihanJam = lebihanJam * bl.stdKadarPerJam;
       peluang.push({
-        kategori: "Ketidakcekapan Buruh Langsung (Labor Efficiency)",
-        masalah: `Masa operasi untuk '${bl.nama}' mengambil ${lebihanJam.toFixed(1)} jam lebih daripada piawaian.`,
-        buktiNilai: `Standard dibenarkan: ${stdJamDibenarkan.toFixed(1)} jam vs Masa sebenar: ${bl.sebenarJamJumlah.toFixed(1)} jam (Kos masa tambahan: RM${kosLebihanJam.toFixed(2)}).`,
-        tindakan: "Susun semula jadual giliran tugas (line balancing), sediakan stesen 'prep' awal, dan latih staf mengikut teknik kerja pantas.",
-        anggaranPenjimatan: `Penjimatan anggaran RM${kosLebihanJam.toFixed(2)}/minggu dari pengurangan jam kerja berlebihan.`,
-        andaian: "Kadar jam kerja tidak terjejas oleh waktu lebih masa (OT).",
+        kategori: tr(language, "utils.savingCatLabor"),
+        masalah: isEn
+          ? `Operating time for '${bl.nama}' took ${lebihanJam.toFixed(1)} hours longer than standard.`
+          : `Masa operasi untuk '${bl.nama}' mengambil ${lebihanJam.toFixed(1)} jam lebih daripada piawaian.`,
+        buktiNilai: isEn
+          ? `Standard allowed: ${stdJamDibenarkan.toFixed(1)} hrs vs Actual time: ${bl.sebenarJamJumlah.toFixed(1)} hrs (Excess time cost: ${currency}${kosLebihanJam.toFixed(2)}).`
+          : `Piawai dibenarkan: ${stdJamDibenarkan.toFixed(1)} jam vs Masa sebenar: ${bl.sebenarJamJumlah.toFixed(1)} jam (Kos masa tambahan: ${currency}${kosLebihanJam.toFixed(2)}).`,
+        tindakan: isEn
+          ? "Rebalance task schedules (line balancing), set up early prep stations, and train staff on standardized workflows."
+          : "Susun semula jadual giliran tugas, sediakan stesen persediaan awal, dan latih staf mengikut teknik kerja pantas.",
+        anggaranPenjimatan: isEn
+          ? `Estimated savings of ${currency}${kosLebihanJam.toFixed(2)}/week by eliminating excess labor hours.`
+          : `Penjimatan anggaran ${currency}${kosLebihanJam.toFixed(2)}/minggu daripada pengurangan jam kerja berlebihan.`,
+        andaian: isEn
+          ? "Hourly rates are not inflated by overtime charges."
+          : "Kadar jam kerja tidak terjejas oleh bayaran lebih masa.",
       });
     }
   });
 
-  // 4. Semak kos pembungkusan jika ada
   overheadBerubah.forEach((ob: any) => {
     const namaItem = String(ob?.nama || ob?.jenis || "").toLowerCase();
-    if (namaItem.includes("bungkus") || namaItem.includes("kotak") || namaItem.includes("pack")) {
+    if (namaItem.includes("bungkus") || namaItem.includes("kotak") || namaItem.includes("pack") || namaItem.includes("box")) {
       const kosPerUnit = Number(ob.stdKosPerUnit || 0);
       if (kosPerUnit > 0.40) {
+        const defaultPack = isEn ? "Packaging" : "Pembungkusan";
         peluang.push({
-          kategori: "Kos Pembungkusan Tinggi",
-          masalah: `Kos pembungkusan '${ob?.nama || ob?.jenis || "Pembungkusan"}' agak tinggi iaitu RM${kosPerUnit.toFixed(2)} seunit produk.`,
-          buktiNilai: `Kos per unit pembungkusan: RM${kosPerUnit.toFixed(2)}. Bagi ${kuantitiSebenar || 1000} unit, jumlah perbelanjaan pembungkusan ialah RM${(kosPerUnit * (kuantitiSebenar || 1000)).toFixed(2)}.`,
-          tindakan: "Pertimbangkan pembelian kotak/bekas terus daripada kilang pembuat dalam kuantiti karton besar (1,000 - 5,000 pcs) untuk memotong kos perantara.",
-          anggaranPenjimatan: `Penjimatan berpotensi 15-25% (sekitar RM${((kosPerUnit * 0.20) * (kuantitiSebenar || 1000)).toFixed(2)}/minggu).`,
-          andaian: "Mempunyai ruang stor yang mencukupi untuk menyimpan stok pembungkusan pukal.",
+          kategori: tr(language, "utils.savingCatPackaging"),
+          masalah: isEn
+            ? `Packaging cost for '${ob?.nama || ob?.jenis || defaultPack}' is relatively high at ${currency}${kosPerUnit.toFixed(2)} per unit.`
+            : `Kos pembungkusan '${ob?.nama || ob?.jenis || defaultPack}' agak tinggi iaitu ${currency}${kosPerUnit.toFixed(2)} seunit produk.`,
+          buktiNilai: isEn
+            ? `Packaging cost per unit: ${currency}${kosPerUnit.toFixed(2)}. For ${kuantitiSebenar || 1000} units, total packaging spend is ${currency}${(kosPerUnit * (kuantitiSebenar || 1000)).toFixed(2)}.`
+            : `Kos per unit pembungkusan: ${currency}${kosPerUnit.toFixed(2)}. Bagi ${kuantitiSebenar || 1000} unit, jumlah perbelanjaan pembungkusan ialah ${currency}${(kosPerUnit * (kuantitiSebenar || 1000)).toFixed(2)}.`,
+          tindakan: isEn
+            ? "Consider buying boxes/containers directly from manufacturers in master cartons (1,000–5,000 pcs) to reduce middleman markups."
+            : "Pertimbangkan pembelian kotak atau bekas terus daripada kilang pembuat dalam kuantiti karton besar (1,000–5,000 keping) untuk mengurangkan kos perantara.",
+          anggaranPenjimatan: isEn
+            ? `Potential savings of 15–25% (around ${currency}${((kosPerUnit * 0.20) * (kuantitiSebenar || 1000)).toFixed(2)}/week).`
+            : `Penjimatan berpotensi 15–25% (sekitar ${currency}${((kosPerUnit * 0.20) * (kuantitiSebenar || 1000)).toFixed(2)}/minggu).`,
+          andaian: isEn
+            ? "Adequate storage space is available for bulk packaging stock."
+            : "Mempunyai ruang stor yang mencukupi untuk menyimpan stok pembungkusan pukal.",
         });
       }
     }

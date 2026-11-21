@@ -1140,7 +1140,7 @@ export default {
       if (url.pathname === "/api/mrcost/history") {
         const actor = await resolveEdgeActor(request, env);
         if (!actor) {
-          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+          return jsonResponse({ error: "Invalid session." }, request, env, 401, { "X-SmartCost-Node": pool });
         }
         return jsonResponse({ ok: true, messages: [], edgeMode: true }, request, env, 200, {
           "X-SmartCost-Node": pool,
@@ -1149,11 +1149,16 @@ export default {
 
       // 4i. Direct Gemini AI Edge Proxy when GEMINI_API_KEY / GOOGLE_API_KEY is configured in Worker Secrets
       if (url.pathname === "/api/mrcost/chat" && request.method === "POST") {
+        const body = await readJsonBodySafe(request);
+        const lang = body.language === "ms" ? "ms" : "en";
         const actor = await resolveEdgeActor(request, env);
         if (!actor) {
           return jsonResponse(
             {
-              error: "Sesi log masuk anda tidak sah atau telah tamat tempoh. Sila log masuk semula untuk menggunakan Mr. Cost AI.",
+              error:
+                lang === "ms"
+                  ? "Sesi log masuk anda tidak sah atau telah tamat tempoh. Sila log masuk semula untuk menggunakan Mr. Cost AI."
+                  : "Your sign-in session is invalid or has expired. Please log in again to use Mr. Cost AI.",
               code: "SESSION_UNAUTHORIZED",
               httpStatus: 401,
             },
@@ -1163,9 +1168,6 @@ export default {
             { "X-SmartCost-Node": pool }
           );
         }
-
-        const body = await readJsonBodySafe(request);
-        const lang = body.language === "en" ? "en" : "ms";
 
         const geminiApiKey = cleanEnvValue(env.GEMINI_API_KEY) || cleanEnvValue(env.GOOGLE_API_KEY);
         if (!geminiApiKey) {
@@ -1203,8 +1205,8 @@ export default {
         }
         const systemText =
           lang === "en"
-            ? "You are Mr. Cost AI, a management cost accounting expert specializing in variance analysis, profit margin, break-even point (BEP), and pricing strategy for SmartCost. Answer accurately, concisely, and professionally."
-            : "Anda ialah Mr. Cost AI, pakar perakaunan pengurusan kos, analisis varians, margin untung, dan titik pulang modal (BEP) untuk sistem SmartCost. Jawab dengan tepat, profesional, dan ringkas dalam bahasa pengguna.";
+            ? "You are Mr. Cost AI, a management cost accounting expert specializing in variance analysis, profit margin, break-even point (BEP), and pricing strategy for SmartCost. Answer accurately, concisely, and professionally. CRITICAL: Respond strictly in English only. Do not include any Bahasa Melayu words except verbatim user-entered business or product names."
+            : "Anda ialah Mr. Cost AI, pakar perakaunan pengurusan kos, analisis varians, margin untung, dan titik pulang modal (BEP) untuk sistem SmartCost. Jawab dengan tepat, profesional, dan ringkas. PENTING: Jawab sepenuhnya dalam Bahasa Melayu sahaja dan jangan campurkan perkataan Bahasa Inggeris kecuali nama khas perniagaan atau produk yang dimasukkan pengguna.";
 
         const businessContext = buildMrCostBusinessSummary(body.businessData);
         const rawHistory = Array.isArray(body.history) ? body.history.slice(-6) : [];
@@ -1224,14 +1226,14 @@ export default {
           contents.pop();
         }
         const promptText = businessContext
-          ? `${businessContext}\n\nSoalan pengguna: ${message.slice(0, 6000)}`
+          ? `${businessContext}\n\n${lang === "en" ? "User inquiry:" : "Soalan pengguna:"} ${message.slice(0, 6000)}`
           : message.slice(0, 6000);
         contents.push({ role: "user", parts: [{ text: promptText }] });
 
         const EDGE_MODEL_CHAIN = ["gemini-4-hydrogen", "gemini-2.5-flash", "gemini-flash-latest"];
         let lastStatus = 502;
         let lastCode = "UPSTREAM_AI_ERROR";
-        let lastDetail = "Tiada respons daripada perkhidmatan AI.";
+        let lastDetail = "No response from AI service.";
         let lastModelTried = EDGE_MODEL_CHAIN[0];
 
         try {
@@ -1304,7 +1306,11 @@ export default {
             {
               error:
                 lastStatus === 429
-                  ? "Had kuota permintaan Gemini API dicapai buat sementara waktu (HTTP 429). Sila cuba sebentar lagi."
+                  ? lang === "en"
+                    ? "Gemini API request quota temporarily reached (HTTP 429). Please retry in a moment."
+                    : "Had kuota permintaan Gemini API dicapai buat sementara waktu (HTTP 429). Sila cuba sebentar lagi."
+                  : lang === "en"
+                  ? `Failed to get a response from the AI service (HTTP ${lastStatus}).`
                   : `Gagal mendapat respons daripada model AI (HTTP ${lastStatus}).`,
               code: lastCode,
               httpStatus: lastStatus,
@@ -1319,7 +1325,10 @@ export default {
         } catch (err: any) {
           return jsonResponse(
             {
-              error: "Ralat rangkaian Cloudflare Worker semasa menghubungi perkhidmatan Gemini AI.",
+              error:
+                lang === "en"
+                  ? "Cloudflare Worker network error while contacting the AI service."
+                  : "Ralat rangkaian Cloudflare Worker semasa menghubungi perkhidmatan AI.",
               code: "EDGE_AI_FETCH_ERROR",
               httpStatus: 502,
               detail: String(err?.message || err || "Network error"),
@@ -1347,7 +1356,7 @@ export default {
       if (url.pathname === "/api/databases/inspect" || url.pathname === "/api/databases/clone-sandbox") {
         const actor = await resolveEdgeActor(request, env);
         if (!actor) {
-          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+          return jsonResponse({ error: "Invalid session." }, request, env, 401, { "X-SmartCost-Node": pool });
         }
         return jsonResponse({ ok: true, edgeMode: true, activeDbKey: actor.dbKey }, request, env, 200, {
           "X-SmartCost-Node": pool,
@@ -1355,10 +1364,15 @@ export default {
       }
 
       if (url.pathname === "/api/auth/delete-company-db" && request.method === "POST") {
+        const body = await readJsonBodySafe(request);
+        const lang = body.language === "ms" ? "ms" : "en";
         const actor = await resolveEdgeActor(request, env);
         if (!actor) {
           return jsonResponse(
-            { error: "Sesi tamat tempoh.", code: "SESSION_EXPIRED" },
+            {
+              error: lang === "ms" ? "Sesi tamat tempoh." : "Session expired.",
+              code: "SESSION_EXPIRED",
+            },
             request,
             env,
             401,
@@ -1367,17 +1381,25 @@ export default {
         }
         if (!actor.isVerifiedDeveloper) {
           return jsonResponse(
-            { error: "Hanya Pembangun yang disahkan boleh memadam pangkalan data.", code: "DEVELOPER_REQUIRED" },
+            {
+              error:
+                lang === "ms"
+                  ? "Hanya Pembangun yang disahkan boleh memadam pangkalan data."
+                  : "Only verified Developers can delete a database.",
+              code: "DEVELOPER_REQUIRED",
+            },
             request,
             env,
             403,
             { "X-SmartCost-Node": pool }
           );
         }
-        const body = await readJsonBodySafe(request);
         if (body.confirmConfirmation !== true) {
           return jsonResponse(
-            { error: "Pengesahan pemadaman diperlukan.", code: "CONFIRMATION_REQUIRED" },
+            {
+              error: lang === "ms" ? "Pengesahan pemadaman diperlukan." : "Deletion confirmation is required.",
+              code: "CONFIRMATION_REQUIRED",
+            },
             request,
             env,
             400,
@@ -1401,7 +1423,7 @@ export default {
       if (url.pathname === "/api/admin/users" && request.method === "GET") {
         const actor = await resolveEdgeActor(request, env);
         if (!actor) {
-          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+          return jsonResponse({ error: "Invalid session." }, request, env, 401, { "X-SmartCost-Node": pool });
         }
         return jsonResponse(
           {
@@ -1428,7 +1450,7 @@ export default {
       if (url.pathname === "/api/admin/backup/audit-log" && request.method === "GET") {
         const actor = await resolveEdgeActor(request, env);
         if (!actor) {
-          return jsonResponse({ error: "Sesi tidak sah." }, request, env, 401, { "X-SmartCost-Node": pool });
+          return jsonResponse({ error: "Invalid session." }, request, env, 401, { "X-SmartCost-Node": pool });
         }
         return jsonResponse({ logs: [], auditLog: [], edgeMode: true }, request, env, 200, {
           "X-SmartCost-Node": pool,
@@ -1438,7 +1460,7 @@ export default {
       if (url.pathname.startsWith("/api/infra/")) {
         const actor = await resolveEdgeActor(request, env);
         if (!actor || !actor.isVerifiedDeveloper) {
-          return jsonResponse({ error: "Akses Pembangun diperlukan." }, request, env, actor ? 403 : 401, {
+          return jsonResponse({ error: "Developer access required." }, request, env, actor ? 403 : 401, {
             "X-SmartCost-Node": pool,
           });
         }

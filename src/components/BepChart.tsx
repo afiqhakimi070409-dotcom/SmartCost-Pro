@@ -19,7 +19,7 @@ import {
   ReferenceDot 
 } from "recharts";
 import { LineChart as ChartIcon, Info, HelpCircle } from "lucide-react";
-import { Language, getStoredLanguage } from "../utils/i18n";
+import { Language, getStoredLanguage, getTranslation, formatLocalizedNumber, formatUnitLabel } from "../utils/i18n";
 import { formatCurrencyRM } from "../utils/financialColors";
 
 interface BepChartProps {
@@ -31,8 +31,9 @@ interface BepChartProps {
 
 export default function BepChart({ config, stdSummary, actSummary, systemLang }: BepChartProps) {
   const lang: Language = systemLang || config.language || getStoredLanguage();
+  const t = getTranslation(lang);
   const [chartMode, setChartMode] = useState<"standard" | "sebenar">("sebenar");
-  const unitLabel = config.unitProduk || (lang === "en" ? "units" : "batang");
+  const unitLabel = formatUnitLabel(config.unitProduk, lang);
   const currencySymbol = config.currency || "RM";
 
   // Mobile detection for responsive X-axis tick intervals and Y-axis title visibility
@@ -61,7 +62,8 @@ export default function BepChart({ config, stdSummary, actSummary, systemLang }:
     summary.jumlahKosTetapMingguan,
     price,
     summary.jumlahKosBerubahSemangkuk,
-    salesQty
+    salesQty,
+    lang
   );
 
   const hasData = price > 0 || summary.jumlahKosTetapMingguan > 0 || summary.jumlahKosBerubahSemangkuk > 0;
@@ -116,7 +118,7 @@ export default function BepChart({ config, stdSummary, actSummary, systemLang }:
       return `${sign}${currencySymbol} ${formatted} ${lang === "en" ? "k" : "ribu"}`;
     }
 
-    return `${sign}${currencySymbol} ${absVal.toLocaleString("en-US")}`;
+    return `${sign}${currencySymbol} ${formatLocalizedNumber(absVal, lang)}`;
   };
 
   return (
@@ -224,7 +226,7 @@ export default function BepChart({ config, stdSummary, actSummary, systemLang }:
               {lang === "en" ? "BREAK-EVEN REVENUE" : "NILAI JUALAN BEP"}
             </span>
             <span className="text-lg font-display font-extrabold text-emerald-700 dark:text-emerald-300 font-mono">
-              {bepResult.isAttainable ? f(bepResult.bepRM) : "N/A"}
+              {bepResult.isAttainable ? f(bepResult.bepRM) : t.bepChart.na}
             </span>
           </div>
         </div>
@@ -381,7 +383,7 @@ export default function BepChart({ config, stdSummary, actSummary, systemLang }:
                 </>
               ) : (
                 <>
-                  Kawasan di <strong>sebelah kanan</strong> titik merah ({bepDot.x} {unitLabel}) melambangkan <strong>zon keuntungan</strong>, manakala kawasan di <strong>sebelah kiri</strong> melambangkan <strong>zon kerugian</strong> perniagaan {config.namaSyarikat || "SCHOOL ENTERPRISE"} anda.
+                  Kawasan di <strong>sebelah kanan</strong> titik merah ({bepDot.x} {unitLabel}) melambangkan <strong>zon keuntungan</strong>, manakala kawasan di <strong>sebelah kiri</strong> melambangkan <strong>zon kerugian</strong> perniagaan {config.namaSyarikat ? <strong>{config.namaSyarikat}</strong> : "anda"}.
                 </>
               )}
             </p>

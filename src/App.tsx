@@ -49,7 +49,6 @@ import {
   Terminal,
   Cpu,
   Sparkles,
-  Globe,
   RotateCcw,
   AlertCircle,
   Sun,
@@ -66,7 +65,15 @@ import {
 } from "./types";
 import AccessMatrixModal from "./components/AccessMatrixModal";
 import { DEV_SANDBOX_DB_KEY } from "./components/CompanyDatabaseModal";
-import { Language, getTranslation, getStoredLanguage, setStoredLanguage } from "./utils/i18n";
+import {
+  Language,
+  getTranslation,
+  getStoredLanguage,
+  setStoredLanguage,
+  applyLanguageToDOM,
+  getLocalizedRoleDef,
+  formatUnitLabel,
+} from "./utils/i18n";
 import { getStoredTheme, setStoredTheme, applyThemeToDOM } from "./utils/theme";
 import {
   SkeletonLoader,
@@ -257,6 +264,10 @@ export default function App() {
   useEffect(() => {
     applyThemeToDOM(theme);
   }, [theme]);
+
+  useEffect(() => {
+    applyLanguageToDOM(systemLang);
+  }, [systemLang]);
 
   const handleToggleTheme = (newTheme?: ThemeMode) => {
     const nextTheme: ThemeMode = newTheme || (theme === "light" ? "dark" : "light");
@@ -467,9 +478,9 @@ export default function App() {
     const migratedTemplates = loadedTemplates.map(tpl => {
       const isPopia = tpl.id === "popia-cabonara" || (tpl.namaProduk || "").toLowerCase().includes("popia") || (tpl.namaProduk || "").toLowerCase().includes("rolls");
       const companyName = tpl.namaSyarikat || tpl.namaPerniagaan || currentUser?.companyName || "SCHOOL ENTERPRISE";
-      const unit = currentLang === "en" 
-        ? (isPopia ? "rolls" : (tpl.konfigurasi?.unitProduk || "units")) 
-        : (isPopia ? "batang" : (tpl.konfigurasi?.unitProduk || "batang"));
+      const unit = isPopia
+        ? (currentLang === "en" ? "rolls" : "batang")
+        : formatUnitLabel(tpl.konfigurasi?.unitProduk, currentLang);
       const prodName = currentLang === "en" && (tpl.namaProduk === "Popia Cabonara Crispy" || tpl.namaProduk === "Popia Carbonara Crispy")
         ? "Crispy Carbonara Rolls"
         : tpl.namaProduk;
@@ -529,7 +540,9 @@ export default function App() {
           ...finalConfig,
           namaSyarikat: finalConfig.namaSyarikat || "SCHOOL ENTERPRISE",
           namaProduk: initialLang === "en" && isPopiaActive ? "Crispy Carbonara Rolls" : (finalConfig.namaProduk || activeTpl.namaProduk),
-          unitProduk: initialLang === "en" ? (isPopiaActive ? "rolls" : (finalConfig.unitProduk || "units")) : (finalConfig.unitProduk || "batang"),
+          unitProduk: isPopiaActive
+            ? (initialLang === "en" ? "rolls" : "batang")
+            : formatUnitLabel(finalConfig.unitProduk, initialLang),
           language: initialLang,
           currency: (!finalConfig.currency || finalConfig.currency === "$") ? "RM" : finalConfig.currency,
         };
@@ -1037,7 +1050,7 @@ export default function App() {
 
     try {
       const parsed = JSON.parse(raw);
-      const clonedName = parsed.config?.namaSyarikat || sourceCompanyName || "Syarikat Asal";
+      const clonedName = parsed.config?.namaSyarikat || sourceCompanyName || t.app.defaultCompany;
       const clonedTemplates = (parsed.templates || templates).map((tpl: any) => ({
         ...tpl,
         namaPerniagaan: `[SANDBOX KLON] ${clonedName}`,
@@ -1157,7 +1170,7 @@ export default function App() {
 
   // Import company database file (.json)
   const handleImportCompanyDb = (dbFile: CompanyDatabaseFile) => {
-    const compName = dbFile.config?.namaSyarikat || dbFile.companyName || "Syarikat Diimport";
+    const compName = dbFile.config?.namaSyarikat || dbFile.companyName || t.app.importedCompany;
     const dbKey = getCompanyDbKey(compName);
 
     setTemplates(dbFile.templates);
@@ -1606,7 +1619,7 @@ export default function App() {
     );
   }
 
-  const roleDef = roleDefs[userRole] || ROLE_DEFINITIONS.admin;
+  const roleDef = getLocalizedRoleDef(userRole, roleDefs[userRole] || ROLE_DEFINITIONS.admin, systemLang);
 
   // Group navigation into 4 clean SME-friendly categories
   const navigationGroups = [
@@ -1654,7 +1667,7 @@ export default function App() {
       {/* STATE 04: NO INTERNET BANNER */}
       {isOffline && (
         <div className="fixed top-0 left-0 right-0 z-50">
-          <NoInternetBanner onRetry={checkConnection} />
+          <NoInternetBanner onRetry={checkConnection} lang={systemLang} />
         </div>
       )}
       
@@ -1670,7 +1683,7 @@ export default function App() {
               {t.nav.systemTitle}
             </h1>
             <p className="font-bold text-sm tracking-tight text-white truncate">
-              {config.namaSyarikat || "Perniagaan Anda"}
+              {config.namaSyarikat || t.app.defaultCompany}
             </p>
             <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-sky-200/90">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
@@ -1766,7 +1779,7 @@ export default function App() {
                 value={activeProductId}
                 onChange={(e) => handleActivateProductInList(e.target.value, templates)}
                 className="w-full bg-white/10 text-white text-xs font-medium rounded-[6px] px-2 py-1 pr-6 border border-white/20 truncate focus:outline-none cursor-pointer appearance-none"
-                aria-label="Pilih Produk"
+                aria-label={t.app.selectProduct}
               >
                 {templates.map((tpl) => (
                   <option key={tpl.id} value={tpl.id} className="bg-[#061830] text-white">
@@ -1782,7 +1795,7 @@ export default function App() {
           <button
             onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
             className="p-2 rounded-[10px] hover:bg-white/10 text-white min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors cursor-pointer"
-            aria-label="Menu"
+            aria-label={t.app.openMenu}
           >
             {mobileSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -1806,7 +1819,7 @@ export default function App() {
               <button 
                 onClick={() => setMobileSidebarOpen(false)} 
                 className="text-white p-2 hover:bg-white/10 rounded-[10px] min-h-[44px] min-w-[44px] flex items-center justify-center"
-                aria-label="Tutup"
+                aria-label={t.common.close}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1852,22 +1865,14 @@ export default function App() {
               <p className="text-[10px] font-bold text-sky-300/60 uppercase tracking-wider px-1">
                 {systemLang === "en" ? "Quick Controls" : "Tetapan Pantas"}
               </p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <button
                   type="button"
                   onClick={() => handleToggleTheme()}
                   className="px-2.5 py-2 bg-white/10 hover:bg-white/15 rounded-[10px] text-xs font-medium text-white flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
                 >
                   {theme === "dark" ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-sky-300" />}
-                  <span>{theme === "dark" ? (systemLang === "en" ? "Light" : "Cerah") : (systemLang === "en" ? "Dark" : "Gelap")}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetLanguage(systemLang === "en" ? "ms" : "en")}
-                  className="px-2.5 py-2 bg-white/10 hover:bg-white/15 rounded-[10px] text-xs font-medium text-white flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
-                >
-                  <Globe className="w-4 h-4 text-sky-300" />
-                  <span>{systemLang === "en" ? "BM" : "EN"}</span>
+                  <span>{theme === "dark" ? t.common.bright : t.common.dark}</span>
                 </button>
               </div>
               {isDevSuperuser ? (
@@ -1965,37 +1970,27 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right side controls: Discreet theme & language & database pills for desktop */}
+            {/* Right side controls: Discreet theme & database pills for desktop (language is exclusively in Settings) */}
             <div className="hidden sm:flex items-center gap-2">
               <button
                 type="button"
                 id="quick-theme-toggle-btn"
                 onClick={() => handleToggleTheme()}
                 className="px-3 py-2 bg-white dark:bg-[#182a44] hover:bg-slate-100 dark:hover:bg-[#1f3554] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-[10px] text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs hover:shadow-xs cursor-pointer min-h-[40px]"
-                title={theme === "dark" ? (systemLang === "en" ? "Switch to Light Mode" : "Tukar ke Mod Cerah") : (systemLang === "en" ? "Switch to Dark Mode" : "Tukar ke Mod Gelap")}
-                aria-label={systemLang === "en" ? "Toggle Theme" : "Tukar Tema"}
+                title={theme === "dark" ? t.app.switchToLight : t.app.switchToDark}
+                aria-label={t.app.toggleTheme}
               >
                 {theme === "dark" ? (
                   <>
                     <Sun className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{systemLang === "en" ? "Light" : "Cerah"}</span>
+                    <span>{t.common.bright}</span>
                   </>
                 ) : (
                   <>
                     <Moon className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>{systemLang === "en" ? "Dark" : "Gelap"}</span>
+                    <span>{t.common.dark}</span>
                   </>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSetLanguage(systemLang === "en" ? "ms" : "en")}
-                className="px-3 py-2 bg-white dark:bg-[#182a44] hover:bg-slate-100 dark:hover:bg-[#1f3554] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-[10px] text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs hover:shadow-xs cursor-pointer min-h-[40px]"
-                title={systemLang === "en" ? "Tukar ke Bahasa Melayu" : "Switch to English"}
-              >
-                <Globe className="w-3.5 h-3.5 text-[#0b3c7a] dark:text-sky-400" />
-                <span>{systemLang === "en" ? "BM" : "EN"}</span>
               </button>
 
               {isDevSuperuser ? (
@@ -2035,6 +2030,7 @@ export default function App() {
             <SlowNetworkNotice
               progress={networkProgress}
               operationLabel={slowOperationLabel}
+              lang={systemLang}
               onUseOffline={() => {
                 dismissSlowNetwork();
                 showToast(
@@ -2069,6 +2065,7 @@ export default function App() {
               <PermissionDenied
                 roleName={roleDef.title}
                 requiredPermission={activeTab}
+                lang={systemLang}
                 onGoBack={() => setActiveTab("dashboard")}
               />
             </div>
@@ -2406,7 +2403,7 @@ export default function App() {
 
       {/* 4. MOBILE BOTTOM NAVIGATION TAB BAR (< 1024px) with Safe Area inset */}
       <nav 
-        aria-label="Navigasi Mudah Alih"
+        aria-label={t.app.mobileNav}
         className="lg:hidden print:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0c182b]/95 backdrop-blur-md border-t border-slate-200/90 dark:border-slate-800 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] px-2 pt-1 pb-[max(env(safe-area-inset-bottom,8px),8px)]"
       >
         <div className="grid grid-cols-5 gap-1 max-w-md mx-auto items-center">
@@ -2436,7 +2433,7 @@ export default function App() {
           >
             <Coins className={`w-5 h-5 ${activeTab === "standard" ? "scale-110" : ""}`} />
             <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-full">
-              {systemLang === "en" ? "Standard" : "Standard"}
+              {systemLang === "en" ? "Standard" : "Piawai"}
             </span>
           </button>
 
@@ -2490,6 +2487,7 @@ export default function App() {
       {/* STATE 08: SESSION EXPIRED MODAL (Saves work before prompt, 1-click restore & sign in) */}
       {isSessionExpired && (
         <SessionExpiredModal
+          lang={systemLang}
           onReLogin={() => {
             handleRestoreSession();
             setIsLoggedIn(false);

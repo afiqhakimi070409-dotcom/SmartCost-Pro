@@ -6,6 +6,7 @@
 import React, { useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { getStoredLanguage, getTranslation } from "../utils/i18n";
 
 interface ModalPortalProps {
   isOpen: boolean;
@@ -24,8 +25,9 @@ export default function ModalPortal({
   icon,
   children,
   maxWidthClass = "max-w-6xl",
-  closeAriaLabel = "Tutup / Close",
+  closeAriaLabel,
 }: ModalPortalProps) {
+  const effectiveCloseLabel = closeAriaLabel || getTranslation(getStoredLanguage()).common.close;
   // Handle ESC key to dismiss modal
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -84,8 +86,8 @@ export default function ModalPortal({
               type="button"
               onClick={onClose}
               className="p-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-              title={closeAriaLabel}
-              aria-label={closeAriaLabel}
+              title={effectiveCloseLabel}
+              aria-label={effectiveCloseLabel}
             >
               <X className="w-5 h-5" />
             </button>

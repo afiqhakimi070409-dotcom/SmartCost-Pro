@@ -11,7 +11,8 @@ export type ThemeMode = "light" | "dark";
 export const THEME_STORAGE_KEY = "smartcost_theme_preference";
 
 /**
- * Retrieves the stored theme preference or falls back to system preference.
+ * Retrieves the stored theme preference or strictly defaults to Light mode.
+ * Never auto-detects OS/device dark mode.
  */
 export function getStoredTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";
@@ -19,10 +20,6 @@ export function getStoredTheme(): ThemeMode {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved === "dark" || saved === "light") {
       return saved;
-    }
-    // Check operating system / browser preference
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      return "dark";
     }
   } catch (e) {
     console.warn("[Theme] Unable to read localStorage theme preference:", e);

@@ -3070,7 +3070,7 @@ app.post("/api/mrcost/chat", async (req, res) => {
   const reqStartTime = Date.now();
   const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
   const language = req.body?.language || "en";
-  const normalizedLang: "en" | "ms" = language === "en" ? "en" : "ms";
+  const normalizedLang: "en" | "ms" = language === "ms" ? "ms" : "en";
 
   if (!checkMrCostRateLimit(clientIp)) {
     res.setHeader("Retry-After", "60");
@@ -3159,6 +3159,8 @@ app.post("/api/mrcost/chat", async (req, res) => {
       buruhLangsung,
       overheadBerubah,
       kuantitiSebenar,
+      language: normalizedLang,
+      currency: config.currency || "RM",
     });
 
     // Deterministic mathematical breakdown for active product
@@ -3372,7 +3374,10 @@ app.post("/api/mrcost/chat", async (req, res) => {
         otherProductsSummary,
       });
       includedRecordCount = built.includedRecordCount;
-      currentUserText = `${built.contextBlock}\n\nSoalan pengguna: ${message.trim()}`;
+      currentUserText =
+        normalizedLang === "en"
+          ? `${built.contextBlock}\n\nUser inquiry: ${message.trim()}`
+          : `${built.contextBlock}\n\nSoalan pengguna: ${message.trim()}`;
     } else {
       includedRecordCount = 0;
     }

@@ -7,7 +7,7 @@ import React, { useState } from "react";
 import { KonfigurasiSistem } from "../types";
 import { RingkasanKos, kiraAnalisisBEP } from "../utils/costCalculations";
 import { Calculator, Target, HelpCircle, CheckCircle2, AlertCircle, Sparkles, Scale, TrendingUp, DollarSign } from "lucide-react";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import { Language, getTranslation, getStoredLanguage, formatLocalizedNumber, formatUnitLabel } from "../utils/i18n";
 import { 
   FINANCIAL_COLORS, 
   formatCurrencyRM 
@@ -24,8 +24,8 @@ export default function BepSheet({ config, stdSummary, actSummary, systemLang }:
   const lang: Language = systemLang || config.language || getStoredLanguage();
   const t = getTranslation(lang);
   const f = (val: number) => formatCurrencyRM(val, config.currency || "RM");
-  const fNum = (val: number) => val.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  const unitLabel = config.unitProduk || (lang === "en" ? "units" : "batang");
+  const fNum = (val: number) => formatLocalizedNumber(val, lang, { maximumFractionDigits: 0 });
+  const unitLabel = formatUnitLabel(config.unitProduk, lang);
 
   // Inputs for target profit calculator
   const [targetProfit, setTargetProfit] = useState<number>(1200);
@@ -35,7 +35,8 @@ export default function BepSheet({ config, stdSummary, actSummary, systemLang }:
     stdSummary.jumlahKosTetapMingguan,
     config.hargaJualanStandard,
     stdSummary.jumlahKosBerubahSemangkuk,
-    config.sasaranKuantitiStandard
+    config.sasaranKuantitiStandard,
+    lang
   );
 
   // Compute BEP for Actual
@@ -43,7 +44,8 @@ export default function BepSheet({ config, stdSummary, actSummary, systemLang }:
     actSummary.jumlahKosTetapMingguan,
     config.hargaJualanSebenar,
     actSummary.jumlahKosBerubahSemangkuk,
-    config.kuantitiSebenarDijual
+    config.kuantitiSebenarDijual,
+    lang
   );
 
   // Calculate Target Profit Units

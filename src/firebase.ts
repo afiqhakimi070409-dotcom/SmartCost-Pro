@@ -82,7 +82,7 @@ export interface GoogleAuthResult {
  * Converts Firebase Authentication error codes into polite, human-readable messages
  * without exposing raw technical strings.
  */
-export function formatAuthErrorMessage(error: any, lang: "en" | "ms" = "ms"): string {
+export function formatAuthErrorMessage(error: any, lang: "en" | "ms" = "en"): string {
   const code = error?.code || "";
   const rawMsg = error?.message || String(error || "");
 
@@ -103,7 +103,7 @@ export function formatAuthErrorMessage(error: any, lang: "en" | "ms" = "ms"): st
       const currentDomain =
         typeof window !== "undefined" && window.location?.hostname
           ? window.location.hostname
-          : "(domain semasa)";
+          : lang === "en" ? "(current domain)" : "(domain semasa)";
       return lang === "en"
         ? `Google sign-in failed because the current domain "${currentDomain}" is not authorized yet. Developer: add "${currentDomain}" in Firebase > Authentication > Settings > Authorized domains.`
         : `Log masuk Google gagal kerana domain semasa "${currentDomain}" belum dibenarkan. Sila tambah "${currentDomain}" di Firebase > Authentication > Settings > Authorized domains.`;
@@ -152,7 +152,7 @@ export function formatAuthErrorMessage(error: any, lang: "en" | "ms" = "ms"): st
  * 2. If popup is blocked by the browser ('auth/popup-blocked'), it seamlessly switches to signInWithRedirect().
  */
 export async function signInWithGoogle(options?: GoogleAuthOptions): Promise<GoogleAuthResult> {
-  const lang = options?.lang || "ms";
+  const lang = options?.lang || "en";
 
   // If user explicitly chose redirect mode
   if (options?.preferRedirect) {

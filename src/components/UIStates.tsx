@@ -36,6 +36,7 @@ import {
   FileText,
   Info
 } from "lucide-react";
+import { getStoredLanguage, getTranslation, tr, type Language } from "../utils/i18n";
 
 // ============================================================================
 // STATE 01: EMPTY STATE
@@ -186,24 +187,27 @@ export interface ErrorStateCardProps {
   onDismiss?: () => void;
   technicalDetails?: string;
   className?: string;
+  lang?: Language;
 }
 
 export const ErrorStateCard: React.FC<ErrorStateCardProps> = ({
-  title = "Ralat Dikesan / Error Occurred",
+  title,
   message,
   fault = "network",
   onRetry,
   onDismiss,
   technicalDetails,
   className = "",
+  lang,
 }) => {
   const [showTechnical, setShowTechnical] = useState(false);
+  const t = getTranslation(lang || getStoredLanguage()).uiStates;
 
   const faultLabel = {
-    user: "Sila semak input data anda",
-    network: "Masalah sambungan rangkaian internet",
-    server: "Tindak balas pelayan awan tertangguh",
-    permission: "Sekatan kebenaran akses akaun",
+    user: t.faultUser,
+    network: t.faultNetwork,
+    server: t.faultServer,
+    permission: t.faultPermission,
   }[fault];
 
   return (
@@ -217,13 +221,13 @@ export const ErrorStateCard: React.FC<ErrorStateCardProps> = ({
           </div>
           <div>
             <h4 className="font-display font-bold text-sm text-rose-900 dark:text-rose-200 uppercase tracking-tight">
-              {title}
+              {title || t.errorTitle}
             </h4>
             <p className="text-xs text-rose-700 dark:text-rose-300/90 mt-1 leading-relaxed">
               {message}
             </p>
             <p className="text-[11px] font-mono text-rose-600/80 dark:text-rose-400/80 mt-1">
-              Punca: {faultLabel}
+              {t.causePrefix} {faultLabel}
             </p>
           </div>
         </div>
@@ -246,7 +250,7 @@ export const ErrorStateCard: React.FC<ErrorStateCardProps> = ({
             className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold tracking-wider uppercase flex items-center gap-1.5 cursor-pointer shadow-xs"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Cuba Semula / Retry</span>
+            <span>{t.retry}</span>
           </button>
         )}
         {technicalDetails && (
@@ -255,7 +259,7 @@ export const ErrorStateCard: React.FC<ErrorStateCardProps> = ({
             onClick={() => setShowTechnical(!showTechnical)}
             className="text-[11px] text-rose-700 dark:text-rose-300 underline cursor-pointer hover:opacity-80"
           >
-            {showTechnical ? "Sembunyikan log" : "Lihat maklumat teknikal"}
+            {showTechnical ? t.hideLog : t.showLog}
           </button>
         )}
       </div>
@@ -271,21 +275,23 @@ export const ErrorStateCard: React.FC<ErrorStateCardProps> = ({
 
 // ============================================================================
 // STATE 04: NO INTERNET (OFFLINE)
-// Purpose: Keep cached content on screen, say what still works.
 // ============================================================================
 export interface NoInternetBannerProps {
   isOffline?: boolean;
   onRetry?: () => void;
   onRetryConnection?: () => void;
+  lang?: Language;
 }
 
 export const NoInternetBanner: React.FC<NoInternetBannerProps> = ({
   isOffline = true,
   onRetry,
   onRetryConnection,
+  lang,
 }) => {
   const handleRetry = onRetry || onRetryConnection;
   if (!isOffline) return null;
+  const t = getTranslation(lang || getStoredLanguage()).uiStates;
 
   return (
     <div className="sticky top-0 z-50 w-full bg-slate-900 text-white border-b border-amber-500/40 px-4 py-2.5 shadow-lg animate-slideDown flex items-center justify-between gap-3 text-xs">
@@ -295,10 +301,10 @@ export const NoInternetBanner: React.FC<NoInternetBannerProps> = ({
         </span>
         <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
           <span className="font-bold text-amber-300 uppercase tracking-wide text-[11px]">
-            Anda Sedang Luar Talian (Offline)
+            {t.offlineTitle}
           </span>
           <span className="text-slate-300 text-[11px]">
-            Paparan data menggunakan simpanan sandaran setempat. Sebarang perubahan disimpan pada peranti anda.
+            {t.offlineDesc}
           </span>
         </div>
       </div>
@@ -309,7 +315,7 @@ export const NoInternetBanner: React.FC<NoInternetBannerProps> = ({
           className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
         >
           <RefreshCw className="w-3 h-3" />
-          <span>Semak Sambungan</span>
+          <span>{t.checkConnection}</span>
         </button>
       )}
     </div>
@@ -318,7 +324,6 @@ export const NoInternetBanner: React.FC<NoInternetBannerProps> = ({
 
 // ============================================================================
 // STATE 05: SLOW NETWORK
-// Purpose: Show real progress and offer a lighter path.
 // ============================================================================
 export interface SlowNetworkNoticeProps {
   isSlow?: boolean;
@@ -328,20 +333,24 @@ export interface SlowNetworkNoticeProps {
   onUseOffline?: () => void;
   onContinueOffline?: () => void;
   onDismiss?: () => void;
+  lang?: Language;
 }
 
 export const SlowNetworkNotice: React.FC<SlowNetworkNoticeProps> = ({
   isSlow = true,
   progress,
   progressPercent = 65,
-  operationLabel = "Menyegerakkan data dengan Firestore...",
+  operationLabel,
   onUseOffline,
   onContinueOffline,
   onDismiss,
+  lang,
 }) => {
   const pct = progress !== undefined ? progress : progressPercent;
   const handleOffline = onUseOffline || onContinueOffline;
   if (!isSlow) return null;
+  const t = getTranslation(lang || getStoredLanguage()).uiStates;
+  const effectiveOpLabel = operationLabel || t.slowNetworkDefaultLabel;
 
   return (
     <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl text-amber-900 dark:text-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn my-2">
@@ -351,13 +360,13 @@ export const SlowNetworkNotice: React.FC<SlowNetworkNoticeProps> = ({
         </div>
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold">
-            <span>Rangkaian Agak Perlahan</span>
+            <span>{t.slowNetworkTitle}</span>
             <span className="font-mono text-[10px] bg-amber-200/70 dark:bg-amber-900/70 px-1.5 py-0.5 rounded">
               {pct}%
             </span>
           </div>
           <p className="text-[11px] text-amber-800 dark:text-amber-300/80">
-            {operationLabel} Sila tunggu sebentar atau teruskan dengan paparan setempat.
+            {effectiveOpLabel} {t.slowNetworkWaitSuffix}
           </p>
         </div>
       </div>
@@ -368,7 +377,7 @@ export const SlowNetworkNotice: React.FC<SlowNetworkNoticeProps> = ({
             onClick={handleOffline}
             className="px-3 py-1.5 bg-white dark:bg-slate-800 text-[#0b3c7a] dark:text-sky-300 border border-amber-300 dark:border-amber-700 text-xs font-bold rounded-lg cursor-pointer hover:bg-amber-100/50"
           >
-            Teruskan Tanpa Tunggu
+            {t.continueWithoutWaiting}
           </button>
         )}
         {onDismiss && (
@@ -395,15 +404,22 @@ export interface NoSearchResultsProps {
   onSelectSuggestion?: (term: string) => void;
   suggestions?: string[];
   compact?: boolean;
+  lang?: Language;
 }
 
 export const NoSearchResults: React.FC<NoSearchResultsProps> = ({
   searchTerm,
   onClearSearch,
   onSelectSuggestion,
-  suggestions = ["Popia", "Kek", "Roti", "Sos", "Ayam"],
+  suggestions,
   compact = false,
+  lang,
 }) => {
+  const effectiveLang = lang || getStoredLanguage();
+  const t = getTranslation(effectiveLang).uiStates;
+  const effectiveSuggestions =
+    suggestions ?? (effectiveLang === "en" ? ["Rolls", "Cake", "Bread", "Sauce", "Chicken"] : ["Popia", "Kek", "Roti", "Sos", "Ayam"]);
+
   return (
     <div className={`${compact ? "p-4 sm:p-6" : "p-8"} text-center rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f1d32] space-y-4 animate-fadeIn`}>
       <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center">
@@ -411,20 +427,20 @@ export const NoSearchResults: React.FC<NoSearchResultsProps> = ({
       </div>
       <div>
         <h4 className="font-display font-bold text-sm text-slate-800 dark:text-white uppercase tracking-tight">
-          Tiada Hasil Ditemui untuk &ldquo;<span className="text-[#0b3c7a] dark:text-sky-400">{searchTerm}</span>&rdquo;
+          {t.noResultsFor} &ldquo;<span className="text-[#0b3c7a] dark:text-sky-400">{searchTerm}</span>&rdquo;
         </h4>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-          Sila semak ejaan anda atau cuba kata kunci yang lebih ringkas.
+          {t.noResultsDesc}
         </p>
       </div>
 
-      {suggestions && suggestions.length > 0 && (
+      {effectiveSuggestions && effectiveSuggestions.length > 0 && (
         <div className="pt-2">
           <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-2">
-            Cadangan Kata Kunci:
+            {t.suggestedKeywords}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-1.5">
-            {suggestions.map((sug) => (
+            {effectiveSuggestions.map((sug) => (
               <button
                 key={sug}
                 type="button"
@@ -444,7 +460,7 @@ export const NoSearchResults: React.FC<NoSearchResultsProps> = ({
           onClick={onClearSearch}
           className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold uppercase rounded-xl transition-all cursor-pointer"
         >
-          Padam Carian / Clear Search
+          {t.clearSearch}
         </button>
       </div>
     </div>
@@ -453,7 +469,6 @@ export const NoSearchResults: React.FC<NoSearchResultsProps> = ({
 
 // ============================================================================
 // STATE 07: PERMISSION DENIED
-// Purpose: Explain why you need it and give a way back.
 // ============================================================================
 export interface PermissionDeniedProps {
   userRole?: string;
@@ -462,6 +477,7 @@ export interface PermissionDeniedProps {
   requiredPermission?: string;
   onGoBack?: () => void;
   onReturnToDashboard?: () => void;
+  lang?: Language;
 }
 
 export const PermissionDenied: React.FC<PermissionDeniedProps> = ({
@@ -471,7 +487,10 @@ export const PermissionDenied: React.FC<PermissionDeniedProps> = ({
   requiredPermission,
   onGoBack,
   onReturnToDashboard,
+  lang,
 }) => {
+  const effectiveLang = lang || getStoredLanguage();
+  const t = getTranslation(effectiveLang).uiStates;
   const currentRole = roleName || userRole;
   const targetRole = requiredPermission || requiredRole;
   const handleBack = onGoBack || onReturnToDashboard || (() => {});
@@ -483,15 +502,18 @@ export const PermissionDenied: React.FC<PermissionDeniedProps> = ({
       </div>
       <div className="space-y-1.5">
         <h3 className="font-display font-black text-lg text-amber-950 dark:text-amber-200 uppercase tracking-tight">
-          Akses Dihadkan (Permission Denied)
+          {t.permissionDeniedTitle}
         </h3>
         <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300/90 leading-relaxed">
-          Bahagian ini dikhaskan untuk kebenaran <strong>{targetRole.toUpperCase()}</strong>. Peranan semasa akaun anda ialah <strong>{currentRole.toUpperCase()}</strong>.
+          {tr(effectiveLang, "uiStates.permissionDeniedBody", {
+            required: targetRole.toUpperCase(),
+            current: currentRole.toUpperCase(),
+          })}
         </p>
       </div>
       <div className="p-3 bg-white/80 dark:bg-black/30 rounded-xl text-left border border-amber-200/80 dark:border-amber-900/80 text-[11px] space-y-1 text-slate-600 dark:text-slate-400">
-        <p className="font-semibold text-slate-800 dark:text-slate-200">Bagaimana untuk mendapatkan akses?</p>
-        <p>Hubungi Pentadbir Sistem (Admin) syarikat anda untuk menaik taraf kebenaran peranan anda.</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-200">{t.howToGetAccessTitle}</p>
+        <p>{t.howToGetAccessDesc}</p>
       </div>
       <div>
         <button
@@ -500,7 +522,7 @@ export const PermissionDenied: React.FC<PermissionDeniedProps> = ({
           className="px-6 py-3 bg-[#0b3c7a] hover:bg-[#093163] text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Kembali ke Papan Pemuka</span>
+          <span>{t.backToDashboard}</span>
         </button>
       </div>
     </div>
@@ -509,21 +531,23 @@ export const PermissionDenied: React.FC<PermissionDeniedProps> = ({
 
 // ============================================================================
 // STATE 08: SESSION EXPIRED
-// Purpose: Save their work before you sign them out.
 // ============================================================================
 export interface SessionExpiredModalProps {
   isOpen?: boolean;
   onReLogin?: () => void;
   onLoginAgain?: () => void;
+  lang?: Language;
 }
 
 export const SessionExpiredModal: React.FC<SessionExpiredModalProps> = ({
   isOpen = true,
   onReLogin,
   onLoginAgain,
+  lang,
 }) => {
   const handleLogin = onReLogin || onLoginAgain || (() => {});
   if (!isOpen) return null;
+  const t = getTranslation(lang || getStoredLanguage()).uiStates;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
@@ -533,16 +557,16 @@ export const SessionExpiredModal: React.FC<SessionExpiredModalProps> = ({
         </div>
         <div className="space-y-1.5">
           <h3 className="font-display font-black text-lg text-slate-800 dark:text-white uppercase tracking-tight">
-            Sesi Log Masuk Telah Tamat
+            {t.sessionExpiredTitle}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Demi keselamatan akaun syarikat anda, sesi aktif telah ditamatkan secara automatik.
+            {t.sessionExpiredDesc}
           </p>
         </div>
         <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-2xl text-[11px] text-emerald-800 dark:text-emerald-200 flex items-center gap-2.5 text-left">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>
-            <strong>Draf Kerja Anda Selamat:</strong> Semua suntingan kos dan kuantiti terkini telah disimpan secara setempat sebelum tamat sesi.
+            <strong>{t.draftSafePrefix}</strong> {t.draftSafeDesc}
           </span>
         </div>
         <button
@@ -550,7 +574,7 @@ export const SessionExpiredModal: React.FC<SessionExpiredModalProps> = ({
           onClick={handleLogin}
           className="w-full py-3.5 bg-[#0b3c7a] hover:bg-[#093163] text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
-          <span>Log Masuk Semula &amp; Teruskan</span>
+          <span>{t.reLoginContinue}</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
@@ -560,7 +584,6 @@ export const SessionExpiredModal: React.FC<SessionExpiredModalProps> = ({
 
 // ============================================================================
 // STATE 09: FORM VALIDATION
-// Purpose: Flag the exact field inline with how to fix it.
 // ============================================================================
 export interface FormFieldValidationProps {
   label?: string;
@@ -570,6 +593,7 @@ export interface FormFieldValidationProps {
   helperText?: string;
   successMessage?: string;
   children?: React.ReactNode;
+  lang?: Language;
 }
 
 export const FormFieldValidation: React.FC<FormFieldValidationProps> = ({
@@ -580,7 +604,9 @@ export const FormFieldValidation: React.FC<FormFieldValidationProps> = ({
   helperText,
   successMessage,
   children,
+  lang,
 }) => {
+  const t = getTranslation(lang || getStoredLanguage()).uiStates;
   if (!children) {
     if (error) {
       return (
@@ -594,7 +620,7 @@ export const FormFieldValidation: React.FC<FormFieldValidationProps> = ({
       return (
         <p className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium animate-fadeIn mt-0.5">
           <CheckCircle2 className="w-3 h-3 shrink-0" />
-          <span>{successMessage || "Sah"}</span>
+          <span>{successMessage || t.validBadge}</span>
         </p>
       );
     }
@@ -611,7 +637,7 @@ export const FormFieldValidation: React.FC<FormFieldValidationProps> = ({
           {isValid && (
             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn">
               <CheckCircle2 className="w-3 h-3" />
-              <span>Sah</span>
+              <span>{t.validBadge}</span>
             </span>
           )}
         </div>

@@ -18,7 +18,7 @@ import {
   getActiveRoleDefinitions, 
   saveActiveRoleDefinitions 
 } from "../types";
-import { Language, getStoredLanguage } from "../utils/i18n";
+import { Language, getStoredLanguage, getLocalizedRoleDef } from "../utils/i18n";
 import { getAuthFetchHeaders } from "../utils/authSessionClient";
 import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 
@@ -101,7 +101,7 @@ export default function AccessMatrixModal({
             return {
               id: su.id,
               username: su.username || prev?.username || "user",
-              fullName: su.fullName || prev?.fullName || su.username || "Pengguna",
+              fullName: su.fullName || prev?.fullName || su.username || (lang === "en" ? "User" : "Pengguna"),
               companyName: su.companyName || prev?.companyName || "ENTERPRISE",
               role: (su.role || prev?.role || "staf") as UserRole,
               email: su.email ?? prev?.email,
@@ -128,7 +128,7 @@ export default function AccessMatrixModal({
 
   if (!isOpen) return null;
 
-  const currentRoleDef = roleDefs[currentUserRole] || ROLE_DEFINITIONS.admin;
+  const currentRoleDef = getLocalizedRoleDef(currentUserRole, roleDefs[currentUserRole] || ROLE_DEFINITIONS.admin, lang);
 
   const handleUpdateRole = async (
     userObj: RegisteredUser,
@@ -198,10 +198,15 @@ export default function AccessMatrixModal({
         localStorage.setItem("pengekosan_registered_users", JSON.stringify(updatedUsers));
       } catch {}
 
+      const localizedAssignedTitle = getLocalizedRoleDef(
+        verifiedNewRole,
+        roleDefs[verifiedNewRole] || ROLE_DEFINITIONS[verifiedNewRole] || ROLE_DEFINITIONS.staf,
+        lang
+      ).title;
       setUpdateSuccess(
         lang === "en"
-          ? `Role access for '${userObj.fullName} (@${userObj.username})' has been updated to '${roleDefs[verifiedNewRole]?.title || verifiedNewRole}'!`
-          : `Hak akses untuk '${userObj.fullName} (@${userObj.username})' telah dikemas kini kepada '${roleDefs[verifiedNewRole]?.title || verifiedNewRole}'!`
+          ? `Role access for '${userObj.fullName} (@${userObj.username})' has been updated to '${localizedAssignedTitle}'!`
+          : `Hak akses untuk '${userObj.fullName} (@${userObj.username})' telah dikemas kini kepada '${localizedAssignedTitle}'!`
       );
       setTimeout(() => setUpdateSuccess(""), 4500);
 
@@ -264,10 +269,11 @@ export default function AccessMatrixModal({
     const newState = updatedDefs[roleKey][perm] 
       ? (lang === "en" ? "allowed (Unlocked)" : "dibenarkan (Boleh)") 
       : (lang === "en" ? "restricted (Locked)" : "disekat (Dikunci)");
+    const localizedRoleTitle = getLocalizedRoleDef(roleKey, roleDefs[roleKey], lang).title;
     setUpdateSuccess(
       lang === "en"
-        ? `Permission '${label}' for role '${roleDefs[roleKey].title}' is now ${newState}!`
-        : `Fungsi '${label}' untuk jawatan '${roleDefs[roleKey].title}' kini telah ${newState}!`
+        ? `Permission '${label}' for role '${localizedRoleTitle}' is now ${newState}!`
+        : `Fungsi '${label}' untuk jawatan '${localizedRoleTitle}' kini telah ${newState}!`
     );
     setTimeout(() => setUpdateSuccess(""), 4000);
   };
@@ -369,7 +375,7 @@ export default function AccessMatrixModal({
                     .filter(([key]) => currentUserRole === "developer" || key !== "developer")
                     .map(([key, def]) => (
                       <option key={key} value={key}>
-                        {def.title} {key === "developer" ? "★" : ""}
+                        {getLocalizedRoleDef(key as UserRole, def, lang).title} {key === "developer" ? "★" : ""}
                       </option>
                     ))}
                 </select>
@@ -491,6 +497,7 @@ export default function AccessMatrixModal({
                     .filter(([key]) => currentUserRole === "developer" || key !== "developer")
                     .map(([key, def]) => {
                     const roleKey = key as UserRole;
+                    const locDef = getLocalizedRoleDef(roleKey, def, lang);
                     const isMyRole = key === currentUserRole;
                     const isRoleAdmin = key === "admin";
                     const isRoleDeveloper = key === "developer";
@@ -511,7 +518,7 @@ export default function AccessMatrixModal({
                         <td className="p-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${def.badgeColor}`}>
-                              {def.title}
+                              {locDef.title}
                             </span>
                             {isMyRole && (
                               <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[9px] font-bold uppercase">
@@ -523,12 +530,12 @@ export default function AccessMatrixModal({
 
                         {/* Access Level */}
                         <td className="p-3.5 font-bold text-slate-900 whitespace-nowrap">
-                          {def.accessLevel}
+                          {locDef.accessLevel}
                         </td>
 
                         {/* Visibility */}
                         <td className="p-3.5 text-slate-600 text-[11px] max-w-[220px]">
-                          {def.visibility}
+                          {locDef.visibility}
                         </td>
 
                         {/* FUNCTION 1: Edit Cost Sheets */}
@@ -790,7 +797,7 @@ export default function AccessMatrixModal({
                     </div>
                   </div>
                   <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold border bg-purple-100 text-purple-800 border-purple-300">
-                    {lang === "en" ? "System Administrator (Admin)" : "Pentadbir Sistem (Admin)"}
+                    {getLocalizedRoleDef("admin", ROLE_DEFINITIONS.admin, lang).title}
                   </span>
                 </div>
               )}
@@ -804,7 +811,7 @@ export default function AccessMatrixModal({
                   .filter((u) => currentUserRole === "developer" || u.role !== "developer")
                   .map((u) => {
                   const uRole = u.role || "kerani";
-                  const uRoleDef = roleDefs[uRole] || ROLE_DEFINITIONS.kerani;
+                  const uRoleDef = getLocalizedRoleDef(uRole, roleDefs[uRole] || ROLE_DEFINITIONS.kerani, lang);
                   const isBusy = isUpdatingRoleUserId === u.id;
 
                   return (
@@ -833,7 +840,7 @@ export default function AccessMatrixModal({
                               .filter(([key]) => currentUserRole === "developer" || key !== "developer")
                               .map(([key, def]) => (
                                 <option key={key} value={key}>
-                                  {def.title} {key === "developer" ? "★" : ""}
+                                  {getLocalizedRoleDef(key as UserRole, def, lang).title} {key === "developer" ? "★" : ""}
                                 </option>
                               ))}
                           </select>
@@ -849,12 +856,18 @@ export default function AccessMatrixModal({
               )}
             </div>
 
-            {pendingRoleChange && (
+            {pendingRoleChange && (() => {
+              const pendingRoleTitle = getLocalizedRoleDef(
+                pendingRoleChange.role,
+                roleDefs[pendingRoleChange.role] || ROLE_DEFINITIONS[pendingRoleChange.role] || ROLE_DEFINITIONS.staf,
+                lang
+              ).title;
+              return (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2.5 animate-fadeIn">
                 <p className="text-xs font-bold text-amber-900">
                   {lang === "en"
-                    ? `Confirm role change for @${pendingRoleChange.user.username} → ${roleDefs[pendingRoleChange.role]?.title || pendingRoleChange.role}`
-                    : `Sahkan pertukaran peranan untuk @${pendingRoleChange.user.username} → ${roleDefs[pendingRoleChange.role]?.title || pendingRoleChange.role}`}
+                    ? `Confirm role change for @${pendingRoleChange.user.username} → ${pendingRoleTitle}`
+                    : `Sahkan pertukaran peranan untuk @${pendingRoleChange.user.username} → ${pendingRoleTitle}`}
                 </p>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
@@ -885,7 +898,8 @@ export default function AccessMatrixModal({
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
 
         </div>

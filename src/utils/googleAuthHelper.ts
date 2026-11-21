@@ -28,7 +28,7 @@ export interface GoogleAuthProcessingResult {
 export async function processGoogleUserAuth(
   gUser: FirebaseUser,
   currentRegisteredUsers: RegisteredUser[],
-  lang: Language = "ms"
+  lang: Language = "en"
 ): Promise<GoogleAuthProcessingResult> {
   const email = (gUser.email || "").trim().toLowerCase();
   const fullName = gUser.displayName?.trim() || email.split("@")[0] || "User";

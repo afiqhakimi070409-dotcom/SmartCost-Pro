@@ -34,7 +34,7 @@ import {
   ROLE_DEFINITIONS
 } from "../types";
 import { createEmptyBusinessDatabase } from "../data/defaultTemplates";
-import { Language, getStoredLanguage } from "../utils/i18n";
+import { Language, getStoredLanguage, getLocalizedRoleDef, getTranslation } from "../utils/i18n";
 import { handleInputEnterKey } from "../utils/inputNavigation";
 import { NoSearchResults, EmptyState } from "./UIStates";
 import { getAuthFetchHeaders, saveServerSessionToken } from "../utils/authSessionClient";
@@ -104,6 +104,7 @@ export default function CompanyDatabaseModal({
   currentUserEmail,
 }: CompanyDatabaseModalProps) {
   const lang: Language = systemLang || getStoredLanguage();
+  const t = getTranslation(lang);
   const [savedCompanies, setSavedCompanies] = useState<SavedCompanyDbInfo[]>([]);
   const [newCompanyName, setNewCompanyName] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; msg: string } | null>(null);
@@ -132,7 +133,7 @@ export default function CompanyDatabaseModal({
   } | null>(null);
 
   const isDeveloper = Boolean(isVerifiedDeveloper);
-  const roleDef = ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin;
+  const roleDef = getLocalizedRoleDef(userRole, ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin, lang);
 
   const isSystemInfrastructureDb = (comp: {
     dbKey: string;
@@ -639,7 +640,7 @@ export default function CompanyDatabaseModal({
       const link = document.createElement("a");
       link.href = url;
       const slug = target.companyName.toLowerCase().replace(/[^a-z0-9]/g, "_") || "database";
-      link.download = `sandaran_${slug}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `${lang === "en" ? "backup_" : "sandaran_"}${slug}_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -728,15 +729,21 @@ export default function CompanyDatabaseModal({
         const serverErrorText = typeof respData?.error === "string" && respData.error.trim() ? respData.error.trim() : "";
         let msg: string;
         if (!isDeveloper) {
-          msg = "Padam ditolak oleh pelayan.";
+          msg = lang === "en" ? "Delete rejected by server." : "Padam ditolak oleh pelayan.";
         } else if (serverErrorText) {
           msg = serverErrorText;
         } else if (deleteResp.status === 401) {
-          msg = "Padam ditolak: Sesi pembangun telah tamat tempoh. Sila sahkan semula.";
+          msg = lang === "en"
+            ? "Delete rejected: Developer session has expired. Please re-authenticate."
+            : "Padam ditolak: Sesi pembangun telah tamat tempoh. Sila sahkan semula.";
         } else if (deleteResp.status === 403) {
-          msg = "Padam ditolak: Tiada kebenaran pembangun yang sah untuk operasi ini.";
+          msg = lang === "en"
+            ? "Delete rejected: Missing valid developer authorization for this operation."
+            : "Padam ditolak: Tiada kebenaran pembangun yang sah untuk operasi ini.";
         } else {
-          msg = "Padam ditolak: Ralat pelayan. Cuba lagi.";
+          msg = lang === "en"
+            ? "Delete rejected: Server error. Please try again."
+            : "Padam ditolak: Ralat pelayan. Cuba lagi.";
         }
         throw new Error(msg);
       }
@@ -753,8 +760,10 @@ export default function CompanyDatabaseModal({
       if (!fsResult.ok) {
         throw new Error(
           isDeveloper
-            ? `Padam ditolak: ${fsResult.errorStep || "Ditolak oleh peraturan pangkalan data."}`
-            : "Padam ditolak oleh pelayan."
+            ? (lang === "en"
+                ? `Delete rejected: ${fsResult.errorStep || "Rejected by database security rules."}`
+                : `Padam ditolak: ${fsResult.errorStep || "Ditolak oleh peraturan pangkalan data."}`)
+            : (lang === "en" ? "Delete rejected by server." : "Padam ditolak oleh pelayan.")
         );
       }
 
@@ -792,7 +801,7 @@ export default function CompanyDatabaseModal({
 
       setFeedback({
         type: "success",
-        msg: respData.message || "Database dipadam.",
+        msg: respData.message || (lang === "en" ? "Database deleted." : "Database dipadam."),
       });
       setDeleteTarget(null);
       setDeleteConfirmText("");
@@ -803,7 +812,7 @@ export default function CompanyDatabaseModal({
     } catch (err: any) {
       setDialogFeedback({
         type: "error",
-        msg: err?.message || "Sebahagian data gagal dipadam: pelayan.",
+        msg: err?.message || (lang === "en" ? "Some data failed to delete on the server." : "Sebahagian data gagal dipadam: pelayan."),
       });
     } finally {
       setIsDeleting(false);
@@ -817,7 +826,7 @@ export default function CompanyDatabaseModal({
     if (!isDeveloper) {
       setDialogFeedback({
         type: "error",
-        msg: "Padam ditolak oleh pelayan.",
+        msg: lang === "en" ? "Delete rejected by server." : "Padam ditolak oleh pelayan.",
       });
       return;
     }
@@ -913,7 +922,7 @@ export default function CompanyDatabaseModal({
                   {lang === "en" ? "Company Databases" : "Pangkalan Data Syarikat"}
                 </h2>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleDef.badgeColor}`}>
-                  {lang === "en" ? roleDef.title : (userRole === "developer" ? "Pembangun Sistem" : roleDef.title)}
+                  {roleDef.title}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-mono mt-0.5">
@@ -926,7 +935,7 @@ export default function CompanyDatabaseModal({
           <button
             onClick={onClose}
             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
-            aria-label="Tutup"
+            aria-label={t.companyDb.closeLabel}
           >
             <X className="w-5 h-5" />
           </button>
@@ -1131,7 +1140,7 @@ export default function CompanyDatabaseModal({
                     searchTerm={searchQuery}
                     onClearSearch={() => setSearchQuery("")}
                     onSelectSuggestion={(sug) => setSearchQuery(sug)}
-                    suggestions={["school", "sandbox", "enterprise"]}
+                    suggestions={lang === "en" ? ["school", "sandbox", "enterprise"] : ["sekolah", "sandbox", "perniagaan"]}
                     compact
                   />
                 ) : (
@@ -1556,7 +1565,7 @@ export default function CompanyDatabaseModal({
             setIsDeleting(false);
             setDialogFeedback({
               type: "error",
-              msg: "Pengesahan pembangun gagal.",
+              msg: lang === "en" ? "Developer authentication failed." : "Pengesahan pembangun gagal.",
             });
           }}
           onSuccess={() => {

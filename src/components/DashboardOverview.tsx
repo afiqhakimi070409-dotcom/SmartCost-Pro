@@ -27,7 +27,7 @@ import {
   X,
   Calculator
 } from "lucide-react";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import { Language, getTranslation, getStoredLanguage, formatLocalizedNumber, formatUnitLabel } from "../utils/i18n";
 import ScenarioSimulatorSheet from "./ScenarioSimulatorSheet";
 import BatchQuotationSheet from "./BatchQuotationSheet";
 import ModalPortal from "./ModalPortal";
@@ -72,8 +72,8 @@ export default function DashboardOverview({
 
   // Format currency using standardized Malaysian Ringgit formatter (with commas & RM prefix)
   const f = (val: number) => formatCurrencyRM(val, config.currency || "RM");
-  const fNum = (val: number) => val.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  const unitLabel = config.unitProduk || (lang === "en" ? "unit" : "batang");
+  const fNum = (val: number) => formatLocalizedNumber(val, lang, { maximumFractionDigits: 0 });
+  const unitLabel = formatUnitLabel(config.unitProduk, lang);
 
   // Dynamic Financial Status evaluations
   const costVarianceStatus = getVarianceStatus(

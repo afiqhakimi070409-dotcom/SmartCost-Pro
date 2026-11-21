@@ -34,7 +34,14 @@ import {
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import {
+  Language,
+  getTranslation,
+  getStoredLanguage,
+  formatLocalizedTime,
+  formatLocalizedNumber,
+  formatUnitLabel,
+} from "../utils/i18n";
 import { RingkasanKos, kiraRingkasanKosStandard, kiraRingkasanKosSebenar } from "../utils/costCalculations";
 import ScenarioSimulatorSheet from "./ScenarioSimulatorSheet";
 import BatchQuotationSheet from "./BatchQuotationSheet";
@@ -221,6 +228,7 @@ export default function MrCostSheet({
 }: MrCostSheetProps) {
   const lang: Language = systemLang || config.language || getStoredLanguage();
   const t = getTranslation(lang);
+  const currency = config.currency || "RM";
   const resolvedDbId = useMemo(() => {
     if (databaseId && databaseId.trim()) return databaseId.trim();
     if (currentUser?.dbKey && currentUser.dbKey.trim()) return currentUser.dbKey.trim();
@@ -290,8 +298,8 @@ export default function MrCostSheet({
         id: `repair-${Date.now()}`,
         role: "model",
         text: lang === "en"
-          ? `Anomaly resolved. The standard selling price for **${config.namaProduk}** is now updated to **RM ${fixPrice.toFixed(2)}**, generating a positive contribution margin of **RM ${(fixPrice - 2.635).toFixed(2)}** (${(((fixPrice - 2.635) / fixPrice) * 100).toFixed(1)}%) per unit over variable costs.`
-          : `Anomali berjaya dibaiki. Harga jualan standard untuk **${config.namaProduk}** kini dikemas kini kepada **RM ${fixPrice.toFixed(2)}**, menghasilkan margin caruman positif sebanyak **RM ${(fixPrice - 2.635).toFixed(2)}** (${(((fixPrice - 2.635) / fixPrice) * 100).toFixed(1)}%) seunit melebihi kos berubah.`,
+          ? `Anomaly resolved. The standard selling price for **${config.namaProduk}** is now updated to **${currency} ${fixPrice.toFixed(2)}**, generating a positive contribution margin of **${currency} ${(fixPrice - 2.635).toFixed(2)}** (${(((fixPrice - 2.635) / fixPrice) * 100).toFixed(1)}%) per unit over variable costs.`
+          : `Anomali berjaya dibaiki. Harga jualan standard untuk **${config.namaProduk}** kini dikemas kini kepada **${currency} ${fixPrice.toFixed(2)}**, menghasilkan margin caruman positif sebanyak **${currency} ${(fixPrice - 2.635).toFixed(2)}** (${(((fixPrice - 2.635) / fixPrice) * 100).toFixed(1)}%) seunit melebihi kos berubah.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, successNotice]);
@@ -305,8 +313,10 @@ export default function MrCostSheet({
       buruhLangsung,
       overheadBerubah,
       kuantitiSebenar: Number(config.kuantitiSebenarDijual || 0),
+      language: lang,
+      currency,
     });
-  }, [bahanMentah, buruhLangsung, overheadBerubah, config.kuantitiSebenarDijual]);
+  }, [bahanMentah, buruhLangsung, overheadBerubah, config.kuantitiSebenarDijual, lang, currency]);
 
   // Run unit converter whenever inputs change
   useEffect(() => {
@@ -316,9 +326,10 @@ export default function MrCostSheet({
       purchaseUnit: unitCalcState.purchaseUnit,
       usageQty: Number(unitCalcState.usageQty || 0),
       usageUnit: unitCalcState.usageUnit,
+      lang,
     });
     setUnitCalcResult(res);
-  }, [unitCalcState]);
+  }, [unitCalcState, lang]);
 
   const getChatStorageKey = (dbId: string, l: Language) => `mrcost_chat_history_v2_${dbId}_${l}`;
 
@@ -384,16 +395,17 @@ export default function MrCostSheet({
     }
 
     const companyName = config.namaSyarikat || currentUser?.companyName || "SMARTCOST";
-    const productName = config.namaProduk || "Produk";
-    const currency = config.currency || "RM";
+    const productName = config.namaProduk || t.mrcostAi.defaultProduct;
+    const formattedQty = formatLocalizedNumber(Number(config.sasaranKuantitiStandard || 0), lang);
+    const localizedUnit = formatUnitLabel(config.unitProduk, lang);
 
     const defaultWelcome: Message = {
       id: "welcome",
       role: "model",
       databaseId: resolvedDbId,
       text: lang === "en"
-        ? `### Welcome to MR. COST AI 🤖\n\nI am your managerial cost accounting and pricing advisor for **${companyName}**.\n\n**Active Worksheet:** **${productName}**\n- Target Production: **${config.sasaranKuantitiStandard || 0} ${config.unitProduk || "units"}**\n- Standard Selling Price: **${currency} ${Number(config.hargaJualanStandard || 0).toFixed(2)}**\n- Current Data Health: **${detectedAnomalies.length === 0 ? "🟢 Clean (No anomalies detected)" : `⚠️ ${detectedAnomalies.length} issue(s) detected`}**\n\n**Key Intelligence Capabilities:**\n* **Deterministic Cost & Pricing**: Compute unit costs and target margin selling prices accurately.\n* **Proactive Anomaly Detection**: Identify unrealistic quantities, negative costs, or prices below cost.\n* **Unit Intelligence**: Auto-convert and reconcile units (kg to g, L to ml, hours to mins).\n* **Non-destructive Simulation**: Run what-if simulations without modifying your live database records.\n\nClick any quick prompt below or type your question in English or Bahasa Melayu!`
-        : `### Selamat Datang ke MR COST AI 🤖\n\nSaya adalah penasihat perakaunan kos pengurusan, pengekosan standard, dan penetapan harga untuk **${companyName}**.\n\n**Lembaran Produk Semasa:** **${productName}**\n- Sasaran Pengeluaran: **${config.sasaranKuantitiStandard || 0} ${config.unitProduk || "unit"}**\n- Harga Jualan Standard: **${currency} ${Number(config.hargaJualanStandard || 0).toFixed(2)}**\n- Status Kesihatan Data: **${detectedAnomalies.length === 0 ? "🟢 Bersih (Tiada anomali dikesan)" : `⚠️ ${detectedAnomalies.length} anomali dikesan`}**\n\n**Keupayaan Utama MR COST AI:**\n* **Ketepatan Matematik Penuh**: Pengiraan kos seunit dan formula margin keuntungan yang tepat.\n* **Pengesanan Anomali Proaktif**: Mengesan harga di bawah kos, kuantiti kosong, atau lonjakan harga bahan.\n* **Kecerdasan Unit & Sukatan**: Menukar kg ke g, liter ke ml, jam ke minit secara automatik.\n* **Simulasi Tanpa Merosakkan Rekod**: Hasil simulasi 'what-if' disimpan sebagai cadangan berasingan tanpa mengubah rekod asal anda.\n\nSila pilih soalan pantas di bawah atau taip sebarang pertanyaan anda!`,
+        ? `### Welcome to MR. COST AI 🤖\n\nI am your managerial cost accounting and pricing advisor for **${companyName}**.\n\n**Active Worksheet:** **${productName}**\n- Target Production: **${formattedQty} ${localizedUnit}**\n- Standard Selling Price: **${currency} ${Number(config.hargaJualanStandard || 0).toFixed(2)}**\n- Current Data Health: **${detectedAnomalies.length === 0 ? "🟢 Clean (No anomalies detected)" : `⚠️ ${detectedAnomalies.length} issue(s) detected`}**\n\n**Key Intelligence Capabilities:**\n* **Deterministic Cost & Pricing**: Compute unit costs and target margin selling prices accurately.\n* **Proactive Anomaly Detection**: Identify unrealistic quantities, negative costs, or prices below cost.\n* **Unit Intelligence**: Auto-convert and reconcile units (kg to g, L to ml, hours to mins).\n* **Non-destructive Simulation**: Run what-if simulations without modifying your live database records.\n\nClick any quick prompt below or type your question below.`
+        : `### Selamat Datang ke MR COST AI 🤖\n\nSaya adalah penasihat perakaunan kos pengurusan, pengekosan standard, dan penetapan harga untuk **${companyName}**.\n\n**Lembaran Produk Semasa:** **${productName}**\n- Sasaran Pengeluaran: **${formattedQty} ${localizedUnit}**\n- Harga Jualan Standard: **${currency} ${Number(config.hargaJualanStandard || 0).toFixed(2)}**\n- Status Kesihatan Data: **${detectedAnomalies.length === 0 ? "🟢 Bersih (Tiada anomali dikesan)" : `⚠️ ${detectedAnomalies.length} anomali dikesan`}**\n\n**Keupayaan Utama MR COST AI:**\n* **Ketepatan Matematik Penuh**: Pengiraan kos seunit dan formula margin keuntungan yang tepat.\n* **Pengesanan Anomali Proaktif**: Mengesan harga di bawah kos, kuantiti kosong, atau lonjakan harga bahan.\n* **Kecerdasan Unit & Sukatan**: Menukar kg ke g, liter ke ml, jam ke minit secara automatik.\n* **Simulasi Tanpa Merosakkan Rekod**: Hasil simulasi bersyarat disimpan sebagai cadangan berasingan tanpa mengubah rekod asal anda.\n\nSila pilih soalan pantas di bawah atau taip sebarang pertanyaan anda!`,
       timestamp: new Date(),
     };
     setMessages([defaultWelcome]);
@@ -470,9 +482,9 @@ export default function MrCostSheet({
     const isSimulationQuery = lower.includes("kalau") || lower.includes("simulasi") || lower.includes("what if") || lower.includes("sekiranya");
 
     if (isSimulationQuery) {
-      const priceMatch = lower.match(/(?:jual|harga)\s*(?:rm|rm\s*)?(\d+(?:\.\d+)?)/i);
+      const priceMatch = lower.match(/(?:sell|jual|price|harga|at)\s*(?:[a-z$€£¥]*\s*)?(\d+(?:\.\d+)?)/i);
       const percentMatch = lower.match(/(\d+(?:\.\d+)?)\s*%/);
-      const qtyMatch = lower.match(/(?:sasaran|kuantiti|volum)\s*(\d+)/i);
+      const qtyMatch = lower.match(/(?:sasaran|kuantiti|volum|target|quantity|volume)\s*(\d+)/i);
 
       let simPrice: number | undefined;
       let simFlourSurge: number | undefined;
@@ -483,7 +495,7 @@ export default function MrCostSheet({
       }
       if (percentMatch) {
         simFlourSurge = parseFloat(percentMatch[1]);
-      } else if (lower.includes("tepung naik") || lower.includes("bahan naik")) {
+      } else if (lower.includes("tepung naik") || lower.includes("bahan naik") || lower.includes("flour") || lower.includes("material rise")) {
         simFlourSurge = 15;
       }
       if (qtyMatch) {
@@ -492,7 +504,7 @@ export default function MrCostSheet({
 
       if (simPrice !== undefined || simFlourSurge !== undefined || simQty !== undefined) {
         generatedProposal = janaSimulasiBerasingan({
-          tajuk: requestLang === "en" ? `Simulation: ${textToSend.slice(0, 45)}...` : `Simulasi: ${textToSend.slice(0, 45)}...`,
+          tajuk: `${t.mrcostAi.simulationPrefix} ${textToSend.slice(0, 45)}...`,
           config,
           bahanMentah,
           buruhLangsung,
@@ -501,6 +513,7 @@ export default function MrCostSheet({
           perubahanHargaJualan: simPrice,
           perubahanKuantitiJualan: simQty,
           peratusPerubahanBahan: simFlourSurge,
+          language: requestLang,
         });
       }
     }
@@ -984,7 +997,7 @@ export default function MrCostSheet({
         const techParts = isDeveloper
           ? [
               httpStatus ? `HTTP ${httpStatus}` : null,
-              errCode ? `Kod: ${errCode}` : null,
+              errCode ? `${t.mrcostAi.codePrefix} ${errCode}` : null,
               modelTried ? `Model: ${modelTried}` : null,
               errDetail && errDetail !== cleanErrorMsg ? errDetail : null,
             ].filter(Boolean)
@@ -1008,20 +1021,20 @@ export default function MrCostSheet({
     { label: "📊 What-If Simulator", query: "Can you help me simulate a 10% price hike and its effect on my weekly break-even volume?" },
     { label: "📝 B2B Bulk Quotation", query: "How should I price a bulk catering order of 300 units with custom packaging?" },
     { label: "🍰 Cost of Product", query: "Calculate the total cost and unit cost for my active product." },
-    { label: "💰 If I sell at $15?", query: "If I sell at RM 15.00, what is my net profit and margin?" },
+    { label: `💰 ${lang === "en" ? `If I sell at ${currency} 15?` : "Kalau saya jual RM15?"}`, query: `If I sell at ${currency} 15.00, what is my net profit and margin?` },
     { label: "📉 Why is my margin low?", query: "Why is my profit margin low, and where are the cost leakages?" },
     { label: "✂️ Reduce Production Cost", query: "How can I reduce production costs based on my current data?" },
     { label: "🌾 If flour rises 15%?", query: "If the price of raw flour rises by 15%, what is the impact on my unit cost and profit?" },
     { label: "🎯 Price for 35% margin", query: "What is the recommended selling price for a target profit margin of 35%?" },
     { label: "⚖️ Compare two products", query: "Compare the costs and profitability between two of my business products." },
   ] : [
-    { label: "📚 Job Order vs Kos Proses", query: "Apakah perbezaan antara Kos Pesanan Kerja (Job Order) dengan Kos Proses (Process Costing)?" },
+    { label: "📚 Tempahan Kerja vs Kos Proses", query: "Apakah perbezaan antara Kos Pesanan Kerja dengan Kos Proses?" },
     { label: "📋 Kewangan vs Kos", query: "Apakah perbezaan utama antara Perakaunan Kewangan dan Perakaunan Kos?" },
     { label: "🏭 3 Elemen Kos Pengeluaran", query: "Apakah 3 elemen utama kos pengeluaran?" },
     { label: "📊 Simulasi Senario", query: "Boleh bantu saya uji simulasi kenaikan harga jualan 10% dan kesannya kepada sasaran titik pulang modal?" },
     { label: "📝 Sebut Harga Tempahan 300 Unit", query: "Bagaimana cara meletakkan harga sebut harga bagi tempahan katering 300 unit berserta pembungkusan khas?" },
     { label: "🍰 Kira kos produk saya", query: "Kira kos produk saya sekarang." },
-    { label: "💰 Kalau saya jual RM15, berapa untung?", query: "Kalau saya jual RM15, berapa untung?" },
+    { label: `💰 Kalau saya jual ${currency} 15, berapa untung?`, query: `Kalau saya jual ${currency} 15, berapa untung?` },
     { label: "📉 Kenapa margin keuntungan saya rendah?", query: "Kenapa margin keuntungan saya rendah?" },
     { label: "✂️ Macam mana nak kurangkan kos?", query: "Macam mana nak kurangkan kos pengeluaran?" },
     { label: "🌾 Kalau harga tepung naik 15%?", query: "Kalau harga tepung naik 15%, apa kesannya kepada kos dan untung saya?" },
@@ -1031,13 +1044,13 @@ export default function MrCostSheet({
 
   const handleApplyProposalToSheet = (proposal: CadanganSimulasi) => {
     if (!onApplySimulation) {
-      alert(lang === "en" ? "Proposal application handler not provided." : "Fungsi aplikasi cadangan tidak disediakan.");
+      setError(lang === "en" ? "Proposal application handler not provided." : "Fungsi aplikasi cadangan tidak disediakan.");
       return;
     }
 
     const confirmMsg = lang === "en"
-      ? `Do you want to update your active worksheet's standard selling price to RM ${proposal.dataSimulasi.hargaJualan.toFixed(2)}? (Original data was untouched during simulation).`
-      : `Adakah anda ingin mengemaskini harga jualan standard lembaran aktif kepada RM ${proposal.dataSimulasi.hargaJualan.toFixed(2)}? (Rekod asal TIDAK diubah sepanjang simulasi dijalankan).`;
+      ? `Do you want to update your active worksheet's standard selling price to ${currency} ${proposal.dataSimulasi.hargaJualan.toFixed(2)}? (Original data was untouched during simulation).`
+      : `Adakah anda ingin mengemaskini harga jualan standard lembaran aktif kepada ${currency} ${proposal.dataSimulasi.hargaJualan.toFixed(2)}? (Rekod asal TIDAK diubah sepanjang simulasi dijalankan).`;
 
     if (window.confirm(confirmMsg)) {
       onApplySimulation({
@@ -1047,7 +1060,7 @@ export default function MrCostSheet({
     }
   };
 
-  const testResults = useMemo(() => jalankanUjianPengesahanMatematik(), []);
+  const testResults = useMemo(() => jalankanUjianPengesahanMatematik(lang), [lang]);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col h-[calc(100vh-140px)] min-h-[660px] overflow-hidden animate-fadeIn relative">
@@ -1250,38 +1263,38 @@ export default function MrCostSheet({
                               <div className="bg-white p-2 rounded border border-slate-200">
                                 <div className="text-[10px] text-slate-500">{lang === "en" ? "Selling Price" : "Harga Jualan"}</div>
                                 <div className="font-bold text-slate-900">
-                                  RM {msg.simulationProposal.dataSimulasi.hargaJualan.toFixed(2)}
+                                  {currency} {msg.simulationProposal.dataSimulasi.hargaJualan.toFixed(2)}
                                 </div>
                                 <div className="text-[10px] text-slate-400">
-                                  Asal: RM {msg.simulationProposal.dataAsal.hargaJualan.toFixed(2)}
+                                  {t.mrcostAi.originalPrefix} {currency} {msg.simulationProposal.dataAsal.hargaJualan.toFixed(2)}
                                 </div>
                               </div>
                               <div className="bg-white p-2 rounded border border-slate-200">
                                 <div className="text-[10px] text-slate-500">{lang === "en" ? "Unit Var Cost" : "Kos Berubah Seunit"}</div>
                                 <div className="font-bold text-slate-900">
-                                  RM {msg.simulationProposal.dataSimulasi.kosBerubahSeunit.toFixed(2)}
+                                  {currency} {msg.simulationProposal.dataSimulasi.kosBerubahSeunit.toFixed(2)}
                                 </div>
                                 <div className="text-[10px] text-slate-400">
-                                  Asal: RM {msg.simulationProposal.dataAsal.kosBerubahSeunit.toFixed(2)}
+                                  {t.mrcostAi.originalPrefix} {currency} {msg.simulationProposal.dataAsal.kosBerubahSeunit.toFixed(2)}
                                 </div>
                               </div>
                               <div className="bg-white p-2 rounded border border-slate-200">
                                 <div className="text-[10px] text-slate-500">{lang === "en" ? "Est. Weekly Profit" : "Untung Mingguan"}</div>
                                 <div className={`font-bold ${msg.simulationProposal.perbezaan.bezaUntungMingguan >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                                  RM {msg.simulationProposal.dataSimulasi.untungMingguan.toFixed(2)}
+                                  {currency} {msg.simulationProposal.dataSimulasi.untungMingguan.toFixed(2)}
                                 </div>
                                 <div className="text-[10px] text-slate-400">
                                   {msg.simulationProposal.perbezaan.bezaUntungMingguan >= 0 ? "+" : ""}
-                                  RM {msg.simulationProposal.perbezaan.bezaUntungMingguan.toFixed(2)}
+                                  {currency} {msg.simulationProposal.perbezaan.bezaUntungMingguan.toFixed(2)}
                                 </div>
                               </div>
                               <div className="bg-white p-2 rounded border border-slate-200">
                                 <div className="text-[10px] text-slate-500">{lang === "en" ? "BEP Volume" : "BEP Unit"}</div>
                                 <div className="font-bold text-slate-900">
-                                  {msg.simulationProposal.dataSimulasi.bepUnit} unit
+                                  {msg.simulationProposal.dataSimulasi.bepUnit} {t.common.unitsDefault}
                                 </div>
                                 <div className="text-[10px] text-slate-400">
-                                  Asal: {msg.simulationProposal.dataAsal.bepUnit} unit
+                                  {t.mrcostAi.originalPrefix} {msg.simulationProposal.dataAsal.bepUnit} {t.common.unitsDefault}
                                 </div>
                               </div>
                             </div>
@@ -1309,7 +1322,7 @@ export default function MrCostSheet({
 
                 {/* Footer details: time + copy */}
                 <div className="flex items-center justify-between px-1 text-[10px] text-slate-400 font-mono">
-                  <span>{msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span>{formatLocalizedTime(msg.timestamp, lang, { hour: "2-digit", minute: "2-digit" })}</span>
                   {msg.role === "model" && (
                     <button
                       onClick={() => handleCopyMessage(msg.id, msg.text)}
@@ -1428,8 +1441,8 @@ export default function MrCostSheet({
           disabled={loading}
           placeholder={
             lang === "en"
-              ? `Ask Mr. Cost about ${config.namaProduk} (e.g., 'What if price is $15?', 'Target margin 35%')...`
-              : `Tanya Mr Cost tentang ${config.namaProduk} (cth: 'Kira kos kek coklat', 'Kalau harga RM15, berapa untung?')...`
+              ? `Ask Mr. Cost about ${config.namaProduk} (e.g., 'What if price is ${currency} 15?', 'Target margin 35%')...`
+              : `Tanya Mr Cost tentang ${config.namaProduk} (cth: 'Kira kos kek coklat', 'Kalau harga ${currency} 15, berapa untung?')...`
           }
           className="flex-1 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 focus:border-blue-600 disabled:bg-slate-100 rounded-lg text-xs outline-hidden transition-all text-slate-800 placeholder-slate-400"
         />
@@ -1515,7 +1528,11 @@ export default function MrCostSheet({
                           {anomali.item}
                         </span>
                         <span className="text-[10px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-white/70">
-                          {anomali.tahap}
+                          {anomali.tahap === "kritikal"
+                            ? t.mrcostAi.severityCritical
+                            : anomali.tahap === "amaran"
+                            ? t.mrcostAi.severityWarning
+                            : t.mrcostAi.severityInfo}
                         </span>
                       </div>
                       <p className="text-slate-700 mb-2 leading-relaxed">
@@ -1542,8 +1559,8 @@ export default function MrCostSheet({
                               <Check className="w-3 h-3" />
                               <span>
                                 {lang === "en"
-                                  ? `Repair Error (Set RM ${(anomali.suggestedFixValue.hargaJualanStandard || 4.00).toFixed(2)})`
-                                  : `Baiki Ralat Ini (Kemas kini RM ${(anomali.suggestedFixValue.hargaJualanStandard || 4.00).toFixed(2)})`}
+                                  ? `Repair Error (Set ${currency} ${(anomali.suggestedFixValue.hargaJualanStandard || 4.00).toFixed(2)})`
+                                  : `Baiki Ralat Ini (Kemas kini ${currency} ${(anomali.suggestedFixValue.hargaJualanStandard || 4.00).toFixed(2)})`}
                               </span>
                             </button>
                           </div>
@@ -1597,10 +1614,10 @@ export default function MrCostSheet({
               <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg text-xs text-slate-700 leading-relaxed">
                 <strong>{lang === "en" ? "Standard Business Ratios:" : "Nisbah Piawai Perniagaan:"}</strong>
                 <ul className="list-disc pl-4 mt-1 space-y-0.5 font-mono text-[11px]">
-                  <li>1 kg = 1,000 g | 1 tan = 1,000 kg</li>
+                  <li>1 kg = 1,000 g | 1 {t.mrcostAi.unitTon} = 1,000 kg</li>
                   <li>1 L = 1,000 ml</li>
-                  <li>1 jam = 60 minit | 1 hari = 24 jam</li>
-                  <li>1 dozen = 12 unit</li>
+                  <li>1 {t.mrcostAi.unitHour} = 60 {t.mrcostAi.unitMinutes} | 1 {t.mrcostAi.unitDay} = 24 {t.mrcostAi.unitHours}</li>
+                  <li>1 dozen = 12 {t.common.unitsDefault}</li>
                 </ul>
               </div>
 
@@ -1614,7 +1631,7 @@ export default function MrCostSheet({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      {lang === "en" ? "Purchase Price (RM)" : "Harga Pembelian (RM)"}
+                      {lang === "en" ? `Purchase Price (${currency})` : `Harga Pembelian (${currency})`}
                     </label>
                     <input
                       type="number"
@@ -1641,11 +1658,11 @@ export default function MrCostSheet({
                       >
                         <option value="kg">kg (Kilogram)</option>
                         <option value="g">g (Gram)</option>
-                        <option value="L">L (Liter)</option>
-                        <option value="ml">ml (Mililiter)</option>
-                        <option value="jam">jam (Jam)</option>
-                        <option value="dozen">dozen (12 unit)</option>
-                        <option value="unit">unit</option>
+                        <option value="L">L ({lang === "en" ? "Liter" : "Liter"})</option>
+                        <option value="ml">ml ({lang === "en" ? "Milliliter" : "Mililiter"})</option>
+                        <option value="jam">{t.mrcostAi.unitHour} {t.mrcostAi.unitHourBracket}</option>
+                        <option value="dozen">dozen (12 {t.common.unitsDefault})</option>
+                        <option value="unit">{t.common.unitsDefault}</option>
                       </select>
                     </div>
                   </div>
@@ -1674,11 +1691,11 @@ export default function MrCostSheet({
                     >
                       <option value="g">g (Gram)</option>
                       <option value="kg">kg (Kilogram)</option>
-                      <option value="ml">ml (Mililiter)</option>
+                      <option value="ml">ml ({lang === "en" ? "Milliliter" : "Mililiter"})</option>
                       <option value="L">L (Liter)</option>
-                      <option value="minit">minit</option>
-                      <option value="jam">jam</option>
-                      <option value="unit">unit</option>
+                      <option value="minit">{t.mrcostAi.unitMinute}</option>
+                      <option value="jam">{t.mrcostAi.unitHour}</option>
+                      <option value="unit">{t.common.unitsDefault}</option>
                     </select>
                   </div>
                 </div>
@@ -1690,7 +1707,7 @@ export default function MrCostSheet({
                     {unitCalcResult.success ? (
                       <>
                         <div className="font-bold text-sm mb-1 text-emerald-950">
-                          Kos Penggunaan Bahan: RM {unitCalcResult.cost.toFixed(2)}
+                          {t.mrcostAi.materialUsageCost} {currency} {unitCalcResult.cost.toFixed(2)}
                         </div>
                         <p className="text-[11px] text-emerald-800">{unitCalcResult.explanation}</p>
                       </>
@@ -1761,7 +1778,7 @@ export default function MrCostSheet({
                     </div>
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono shrink-0 ${
-                        t.status === "LULUS"
+                        t.status === "LULUS" || t.status === "PASS"
                           ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
                           : "bg-rose-100 text-rose-800 border border-rose-300"
                       }`}

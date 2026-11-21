@@ -48,7 +48,7 @@ import {
 } from "recharts";
 import { getAuthFetchHeaders } from "../utils/authSessionClient";
 import { testFirestoreConnection } from "../firebase";
-import { Language } from "../utils/i18n";
+import { Language, getTranslation, formatLocalizedNumber, formatLocalizedTime, formatLocalizedDateTime } from "../utils/i18n";
 import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
 
 export type InfraSubSection =
@@ -374,16 +374,17 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function formatUptime(seconds: number): string {
+function formatUptime(seconds: number, hourShort: string): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
-  if (h > 0) return `${h}j ${m}m ${s}s`;
+  if (h > 0) return `${h}${hourShort} ${m}m ${s}s`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
 
 export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lang }: Props) {
+  const t = getTranslation(lang);
   const [section, setSection] = useState<InfraSubSection>("overview");
   const [data, setData] = useState<InfraOverviewResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -483,12 +484,12 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         setSelectedRestoreId(json.backups.backups[0].id);
       }
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Gagal memuatkan telemetri pelayan." });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Failed to load server telemetry." : "Gagal memuatkan telemetri pelayan.") });
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isRealDeveloperSuperuser, selectedRestoreId]);
+  }, [isRealDeveloperSuperuser, selectedRestoreId, lang]);
 
   const loadLogs = useCallback(async () => {
     if (!isRealDeveloperSuperuser) return;
@@ -544,14 +545,14 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         credentials: getFetchCredentialsMode(),
         headers,
       });
-      if (!resp.ok) throw new Error("Health check failed");
+      if (!resp.ok) throw new Error(lang === "en" ? "Health check failed" : "Ujian kesihatan gagal");
       await loadOverview(true);
       setFeedback({
         type: "success",
         msg: lang === "en" ? "Health probes completed across Server A, Server B, and Server C." : "Ujian kesihatan HTTP selesai bagi Server A, Server B dan Server C.",
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Health check failed" });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Health check failed" : "Ujian kesihatan gagal") });
     } finally {
       setActionBusy(null);
     }
@@ -569,7 +570,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         body: JSON.stringify({ mode }),
       });
       const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Failed to update server mode");
+      if (!resp.ok) throw new Error(json?.error || (lang === "en" ? "Failed to update server mode" : "Gagal menukar mod pelayan"));
       await loadOverview(true);
       setFeedback({
         type: "info",
@@ -578,7 +579,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
           : `${nodeId.toUpperCase()} ditukar ke mod ${mode}. Penghalaan Load Balancer dikemas kini secara automatik.`,
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Gagal menukar status pelayan." });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Failed to update server status." : "Gagal menukar status pelayan.") });
     } finally {
       setActionBusy(null);
     }
@@ -596,7 +597,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         body: JSON.stringify({ loadBalancer: { algorithm: algo } }),
       });
       const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Gagal menukar algoritma");
+      if (!resp.ok) throw new Error(json?.error || (lang === "en" ? "Failed to update algorithm" : "Gagal menukar algoritma"));
       setCfgForm(json.config);
       await loadOverview(true);
       setFeedback({
@@ -604,7 +605,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         msg: lang === "en" ? `Load balancing algorithm switched to ${algo}.` : `Algoritma Load Balancer ditukar kepada ${algo}.`,
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Ralat" });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Error updating algorithm" : "Ralat menukar algoritma") });
     } finally {
       setActionBusy(null);
     }
@@ -622,11 +623,11 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         body: JSON.stringify({ requestCount: lbTestCount }),
       });
       const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Ujian gagal");
+      if (!resp.ok) throw new Error(json?.error || (lang === "en" ? "Test failed" : "Ujian gagal"));
       setLbTestResult(json);
       await loadOverview(true);
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Ujian agihan beban gagal." });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Load distribution test failed." : "Ujian agihan beban gagal.") });
     } finally {
       setActionBusy(null);
     }
@@ -652,7 +653,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         msg: `Firestore Ping: ${res.status.toUpperCase()} (${latencyMs} ms) — ${res.message}`,
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Firestore ping failed" });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Firestore ping failed" : "Ujian sambungan Firestore gagal") });
     } finally {
       setActionBusy(null);
     }
@@ -670,7 +671,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         body: JSON.stringify({ note: backupNote.trim() || "Manual snapshot from Developer Console" }),
       });
       const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Backup creation failed");
+      if (!resp.ok) throw new Error(json?.error || (lang === "en" ? "Backup creation failed" : "Gagal menjana sandaran"));
       setBackupNote("");
       if (json.backup?.id) setSelectedRestoreId(json.backup.id);
       await loadOverview(true);
@@ -681,7 +682,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
           : `Sandaran ${json.backup?.id} disimpan dalam storan berasingan (SHA-256 disahkan).`,
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Gagal menjana sandaran" });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Failed to create backup." : "Gagal menjana sandaran.") });
     } finally {
       setActionBusy(null);
     }
@@ -703,11 +704,13 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       setFeedback({
         type: json.ok ? "success" : "error",
         msg: json.ok
-          ? `SHA-256 VERIFIED (${backupId}): ${String(json.computedSha256 || "").slice(0, 16)}...`
-          : (json.error || "Checksum mismatch!"),
+          ? (lang === "en"
+              ? `SHA-256 VERIFIED (${backupId}): ${String(json.computedSha256 || "").slice(0, 16)}...`
+              : `SHA-256 DISAHKAN (${backupId}): ${String(json.computedSha256 || "").slice(0, 16)}...`)
+          : (json.error || (lang === "en" ? "Checksum mismatch!" : "Semakan integriti tidak sepadan!")),
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Verification error" });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Verification error" : "Ralat pengesahan") });
     } finally {
       setActionBusy(null);
     }
@@ -720,7 +723,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         credentials: getFetchCredentialsMode(),
         headers,
       });
-      if (!resp.ok) throw new Error("Muat turun gagal atau fail rosak.");
+      if (!resp.ok) throw new Error(lang === "en" ? "Download failed or file is corrupted." : "Muat turun gagal atau fail rosak.");
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -729,7 +732,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Gagal memuat turun sandaran." });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Failed to download backup." : "Gagal memuat turun sandaran.") });
     }
   };
 
@@ -747,10 +750,10 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         body: JSON.stringify({ backupId: selectedRestoreId }),
       });
       const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Pratonton gagal");
+      if (!resp.ok) throw new Error(json?.error || (lang === "en" ? "Preview failed" : "Pratonton gagal"));
       setRestorePreview(json);
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Pratonton pemulihan gagal." });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Restore preview failed." : "Pratonton pemulihan gagal.") });
     } finally {
       setActionBusy(null);
     }
@@ -773,7 +776,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         }),
       });
       const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Pemulihan selamat gagal.");
+      if (!resp.ok) throw new Error(json?.error || (lang === "en" ? "Safe restore failed." : "Pemulihan selamat gagal."));
       setRestoreConfirmPhrase("");
       setRestorePreview(null);
       await loadOverview(true);
@@ -784,7 +787,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
           : `Pemulihan selamat berjaya! Sandaran pra-pemulihan: ${json.preRestoreBackupId}. Entri DB dipulihkan: ${json.restoredDatabasesCount}. Akaun pengguna dikekalkan.`,
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Pemulihan gagal." });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Restore failed." : "Pemulihan gagal.") });
     } finally {
       setActionBusy(null);
     }
@@ -804,7 +807,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         body: JSON.stringify(cfgForm),
       });
       const json = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(json?.error || "Gagal menyimpan konfigurasi.");
+      if (!resp.ok) throw new Error(json?.error || (lang === "en" ? "Failed to save configuration." : "Gagal menyimpan konfigurasi."));
       setCfgForm(json.config);
       await loadOverview(true);
       setFeedback({
@@ -812,7 +815,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         msg: lang === "en" ? "Infrastructure configuration saved." : "Konfigurasi infrastruktur & penskalaan automatik disimpan.",
       });
     } catch (e: any) {
-      setFeedback({ type: "error", msg: e?.message || "Ralat menyimpan konfigurasi." });
+      setFeedback({ type: "error", msg: e?.message || (lang === "en" ? "Error saving configuration." : "Ralat menyimpan konfigurasi.") });
     } finally {
       setActionBusy(null);
     }
@@ -847,16 +850,16 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
   }
 
   const navItems: Array<{ id: InfraSubSection; labelMs: string; labelEn: string; icon: React.ReactNode }> = [
-    { id: "overview", labelMs: "1. Infrastructure Overview", labelEn: "1. Infrastructure Overview", icon: <Activity className="w-3.5 h-3.5" /> },
-    { id: "servers", labelMs: "2. Server Management", labelEn: "2. Server Management", icon: <Server className="w-3.5 h-3.5" /> },
-    { id: "load-balancer", labelMs: "3. Load Balancer", labelEn: "3. Load Balancer", icon: <GitBranch className="w-3.5 h-3.5" /> },
-    { id: "database", labelMs: "4. Database Monitoring", labelEn: "4. Database Monitoring", icon: <Database className="w-3.5 h-3.5" /> },
-    { id: "backups", labelMs: "5. Backup Management", labelEn: "5. Backup Management", icon: <Archive className="w-3.5 h-3.5" /> },
-    { id: "recovery", labelMs: "6. Recovery Management", labelEn: "6. Recovery Management", icon: <RotateCcw className="w-3.5 h-3.5" /> },
-    { id: "traffic", labelMs: "7. Traffic Analytics", labelEn: "7. Traffic Analytics", icon: <BarChart3 className="w-3.5 h-3.5" /> },
-    { id: "logs", labelMs: "8. Server Logs", labelEn: "8. Server Logs", icon: <FileTerminal className="w-3.5 h-3.5" /> },
-    { id: "security", labelMs: "9. Security Monitoring", labelEn: "9. Security Monitoring", icon: <ShieldAlert className="w-3.5 h-3.5" /> },
-    { id: "configuration", labelMs: "10. Infrastructure Configuration", labelEn: "10. Infrastructure Configuration", icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+    { id: "overview", labelMs: "1. Gambaran Infrastruktur", labelEn: "1. Infrastructure Overview", icon: <Activity className="w-3.5 h-3.5" /> },
+    { id: "servers", labelMs: "2. Pengurusan Pelayan", labelEn: "2. Server Management", icon: <Server className="w-3.5 h-3.5" /> },
+    { id: "load-balancer", labelMs: "3. Pengimbang Beban (LB)", labelEn: "3. Load Balancer", icon: <GitBranch className="w-3.5 h-3.5" /> },
+    { id: "database", labelMs: "4. Pemantauan Pangkalan Data", labelEn: "4. Database Monitoring", icon: <Database className="w-3.5 h-3.5" /> },
+    { id: "backups", labelMs: "5. Pengurusan Sandaran", labelEn: "5. Backup Management", icon: <Archive className="w-3.5 h-3.5" /> },
+    { id: "recovery", labelMs: "6. Pengurusan Pemulihan", labelEn: "6. Recovery Management", icon: <RotateCcw className="w-3.5 h-3.5" /> },
+    { id: "traffic", labelMs: "7. Analitik Trafik", labelEn: "7. Traffic Analytics", icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { id: "logs", labelMs: "8. Log Pelayan", labelEn: "8. Server Logs", icon: <FileTerminal className="w-3.5 h-3.5" /> },
+    { id: "security", labelMs: "9. Pemantauan Keselamatan", labelEn: "9. Security Monitoring", icon: <ShieldAlert className="w-3.5 h-3.5" /> },
+    { id: "configuration", labelMs: "10. Konfigurasi Infrastruktur", labelEn: "10. Infrastructure Configuration", icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
   ];
 
   const servers = data?.servers || [];
@@ -872,10 +875,10 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-sky-300 uppercase tracking-wider">
             <Server className="w-3.5 h-3.5" />
-            <span>SERVER &amp; DATABASE MANAGEMENT</span>
+            <span>{lang === "en" ? "SERVER & DATABASE MANAGEMENT" : "PENGURUSAN PELAYAN & PANGKALAN DATA"}</span>
             <span className="text-slate-500">/</span>
             <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-bold">
-              ZERO-COST: RM0.00/BULAN
+              {lang === "en" ? "ZERO-COST: RM0.00/MONTH" : "KOS SIFAR: RM0.00/BULAN"}
             </span>
           </div>
           <h3 className="text-base sm:text-lg font-bold tracking-tight">
@@ -924,7 +927,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-bold">
               <BellRing className="w-4 h-4 text-amber-700" />
-              <span>AMARAN KUOTA FREE TIER ({usageLimits.alerts.length}) — {usageLimits.overallStatus}</span>
+              <span>{t.serverDb.freeTierWarning} ({usageLimits.alerts.length}) — {usageLimits.overallStatus}</span>
             </div>
             <button
               type="button"
@@ -934,7 +937,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
               }}
               className="text-[11px] font-semibold underline cursor-pointer"
             >
-              Lihat Free Tier Usage
+              {t.serverDb.viewFreeTierUsage}
             </button>
           </div>
           {usageLimits.alerts.map((al) => (
@@ -1024,7 +1027,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     {lb?.healthyNodes ?? 0} / {lb?.totalNodes ?? 3}
                   </div>
                   <span className="text-[11px] text-emerald-700 font-sans">
-                    {lb?.healthyNodes === lb?.totalNodes ? "Semua node aktif" : "Failover aktif"}
+                    {lb?.healthyNodes === lb?.totalNodes ? t.serverDb.activeNodes : t.serverDb.failoverActive}
                   </span>
                 </div>
                 <div className="bg-white rounded-xl border border-slate-200 p-3.5">
@@ -1032,10 +1035,10 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     {lang === "en" ? "LB Requests" : "Jumlah Permintaan"}
                   </span>
                   <div className="text-xl font-bold text-slate-900 mt-1">
-                    {(lb?.totalRequests ?? 0).toLocaleString()}
+                    {formatLocalizedNumber(lb?.totalRequests ?? 0, lang)}
                   </div>
                   <span className="text-[11px] text-slate-500 font-sans">
-                    Algo: {lb?.algorithm}
+                    {lang === "en" ? "Algo:" : "Algoritma:"} {lb?.algorithm}
                   </span>
                 </div>
                 <div className="bg-white rounded-xl border border-slate-200 p-3.5">
@@ -1046,7 +1049,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     {lb?.avgLatencyMs ?? 0} ms
                   </div>
                   <span className="text-[11px] text-slate-500 font-sans">
-                    Error rate: {lb?.overallErrorRatePercent ?? 0}%
+                    {lang === "en" ? "Error rate:" : "Kadar ralat:"} {lb?.overallErrorRatePercent ?? 0}%
                   </span>
                 </div>
                 <div className="bg-white rounded-xl border border-slate-200 p-3.5">
@@ -1076,7 +1079,9 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     </p>
                   </div>
                   <span className="text-[11px] font-mono bg-slate-100 text-slate-700 px-2.5 py-1 rounded border border-slate-200">
-                    {data.cloudDeployment.managedCloudRunActive ? "GCP Cloud Run" : "Local Node HTTP Pool"}
+                    {data.cloudDeployment.managedCloudRunActive
+                      ? "GCP Cloud Run"
+                      : (lang === "en" ? "Local Node HTTP Pool" : "Kolam HTTP Nod Tempatan")}
                   </span>
                 </div>
 
@@ -1087,24 +1092,24 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                         <GitBranch className="w-4 h-4 text-[#0b3c7a]" />
-                        Free Edge &amp; Routing
+                        {lang === "en" ? "Free Edge & Routing" : "Penghalaan & Pinggir Percuma"}
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                         RM0.00
                       </span>
                     </div>
                     <div className="text-xs text-slate-600 space-y-1 font-mono tabular-nums">
-                      <div>Algorithm: <strong>{lb?.algorithm}</strong></div>
-                      <div>API Today: <strong>{usageLimits?.metrics.dailyApiRequests.observedCount ?? 0}</strong> / 100k</div>
-                      <div>Failover Events: <strong>{lb?.totalFailoverEvents ?? 0}</strong></div>
-                      <div>Pages + Workers: <strong>Free Tier</strong></div>
+                      <div>{lang === "en" ? "Algorithm:" : "Algoritma:"} <strong>{lb?.algorithm}</strong></div>
+                      <div>{lang === "en" ? "API Today:" : "API Hari Ini:"} <strong>{usageLimits?.metrics.dailyApiRequests.observedCount ?? 0}</strong> / 100k</div>
+                      <div>{lang === "en" ? "Failover Events:" : "Kejadian Failover:"} <strong>{lb?.totalFailoverEvents ?? 0}</strong></div>
+                      <div>Pages + Workers: <strong>{lang === "en" ? "Free Tier" : "Pelan Percuma"}</strong></div>
                     </div>
                   </div>
 
                   {/* Tier 2: Logical Simulation Pool (Single Runtime) */}
                   <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
                     <div className="text-[11px] font-bold uppercase text-slate-500 tracking-wide">
-                      Logical Pool (Simulasi 1 Runtime)
+                      {lang === "en" ? "Logical Pool" : "Kolam Logik"} {t.serverDb.simRuntime}
                     </div>
                     {servers.map((srv) => (
                       <div key={srv.id} className="flex items-center justify-between text-xs border border-slate-200 rounded-lg px-2.5 py-1.5">
@@ -1114,7 +1119,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                           <span className="text-[10px] font-mono text-slate-500">:{srv.port ?? "—"}</span>
                         </div>
                         <div className="flex items-center gap-2 font-mono text-[11px] tabular-nums">
-                          <span className="text-slate-600">{srv.totalRequests} req</span>
+                          <span className="text-slate-600">{srv.totalRequests} {lang === "en" ? "req" : "perm"}</span>
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${STATUS_STYLE[srv.status]}`}>
                             {srv.status}
                           </span>
@@ -1128,19 +1133,19 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     <div>
                       <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                         <Database className="w-4 h-4 text-[#0b3c7a]" />
-                        Single Shared DB Layer
+                        {lang === "en" ? "Single Shared DB Layer" : "Lapisan Pangkalan Data Tunggal"}
                       </span>
                       <p className="text-[11px] text-slate-600 mt-1">
-                        Firestore (<span className="font-mono">{dbStats?.firestore.projectId}</span>) + Atomic JSON Registry (<span className="font-mono">{dbStats?.registeredDatabasesCount} DB</span>)
+                        Firestore (<span className="font-mono">{dbStats?.firestore.projectId}</span>) + {lang === "en" ? "Atomic JSON Registry" : "Daftar JSON Atomik"} (<span className="font-mono">{dbStats?.registeredDatabasesCount} DB</span>)
                       </p>
                     </div>
                     <div className="pt-2 border-t border-slate-200">
                       <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                         <Archive className="w-4 h-4 text-emerald-700" />
-                        Zero-Cost Manual Backup
+                        {lang === "en" ? "Zero-Cost Manual Backup" : "Sandaran Manual Kos Sifar"}
                       </span>
                       <p className="text-[11px] text-slate-600 font-mono mt-0.5">
-                        {dbStats?.backupOverview.storagePath} • {dbStats?.backupOverview.totalSnapshots} snapshots
+                        {dbStats?.backupOverview.storagePath} • {dbStats?.backupOverview.totalSnapshots} {lang === "en" ? "snapshots" : "snapshot"}
                       </p>
                     </div>
                   </div>
@@ -1165,18 +1170,18 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                         <Gauge className="w-4 h-4 text-[#0b3c7a]" />
-                        <span>FREE TIER USAGE MONITORING (RM0.00 / BULAN)</span>
+                        <span>{lang === "en" ? "FREE TIER USAGE MONITORING (RM0.00 / MONTH)" : "PEMANTAUAN PENGGUNAAN PELAN PERCUMA (RM0.00 / BULAN)"}</span>
                       </h4>
                       <p className="text-xs text-slate-500">
-                        Tarikh MYT: <strong className="font-mono">{usageLimits.dateMyt}</strong> • Bulan:{" "}
-                        <strong className="font-mono">{usageLimits.monthMyt}</strong> • Ambang:{" "}
-                        <strong className="font-mono">{usageLimits.warningThresholdPercent}% (Approaching Limit)</strong> •{" "}
-                        <strong className="font-mono">{usageLimits.highUsageThresholdPercent}% (High Usage)</strong> •{" "}
-                        <strong className="font-mono">100% (Free Quota Exceeded)</strong>
+                        {lang === "en" ? "MYT Date:" : "Tarikh MYT:"} <strong className="font-mono">{usageLimits.dateMyt}</strong> • {lang === "en" ? "Month:" : "Bulan:"}{" "}
+                        <strong className="font-mono">{usageLimits.monthMyt}</strong> • {lang === "en" ? "Thresholds:" : "Ambang:"}{" "}
+                        <strong className="font-mono">{usageLimits.warningThresholdPercent}% ({lang === "en" ? "Approaching Limit" : "Hampir Had"})</strong> •{" "}
+                        <strong className="font-mono">{usageLimits.highUsageThresholdPercent}% ({lang === "en" ? "High Usage" : "Penggunaan Tinggi"})</strong> •{" "}
+                        <strong className="font-mono">100% ({lang === "en" ? "Free Quota Exceeded" : "Kuota Melebihi Had"})</strong>
                       </p>
                     </div>
                     <span className={`px-2.5 py-1 rounded text-[11px] font-mono font-bold border ${STATUS_STYLE[usageLimits.overallStatus] || STATUS_STYLE.ACTIVE}`}>
-                      STATUS: {usageLimits.overallStatus} • {usageLimits.estimatedMonthlyCost}/bln
+                      STATUS: {usageLimits.overallStatus} • {usageLimits.estimatedMonthlyCost}/{lang === "en" ? "mo" : "bln"}
                     </span>
                   </div>
 
@@ -1185,14 +1190,14 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     {/* 1. Daily API Usage */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">1. Daily API Usage</span>
+                        <span className="font-bold text-slate-900">{lang === "en" ? "1. Daily API Usage" : "1. Penggunaan API Harian"}</span>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${STATUS_STYLE[usageLimits.metrics.dailyApiRequests.status] || STATUS_STYLE.ACTIVE}`}>
                           {usageLimits.metrics.dailyApiRequests.status}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-base font-bold text-slate-900">
-                        {usageLimits.metrics.dailyApiRequests.observedCount.toLocaleString()} /{" "}
-                        {usageLimits.metrics.dailyApiRequests.freeLimit.toLocaleString()}{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.dailyApiRequests.observedCount, lang)} /{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.dailyApiRequests.freeLimit, lang)}{" "}
                         <span className="text-xs font-normal text-slate-500">({usageLimits.metrics.dailyApiRequests.percentUsed}%)</span>
                       </div>
                       <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -1203,21 +1208,23 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       </div>
                       <p className="text-[11px] text-slate-600">{usageLimits.metrics.dailyApiRequests.source}</p>
                       <p className="text-[10px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1">
-                        <strong>External: {usageLimits.metrics.dailyApiRequests.externalStatus}</strong> — {usageLimits.metrics.dailyApiRequests.externalNote}
+                        <strong>{lang === "en" ? "External:" : "Luaran:"} {usageLimits.metrics.dailyApiRequests.externalStatus}</strong> — {usageLimits.metrics.dailyApiRequests.externalNote}
                       </p>
                     </div>
 
                     {/* 2. Monthly API Usage */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">2. Monthly API Usage ({usageLimits.monthMyt})</span>
+                        <span className="font-bold text-slate-900">
+                          {lang === "en" ? `2. Monthly API Usage (${usageLimits.monthMyt})` : `2. Penggunaan API Bulanan (${usageLimits.monthMyt})`}
+                        </span>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${STATUS_STYLE[usageLimits.metrics.monthlyApiRequests.status] || STATUS_STYLE.ACTIVE}`}>
                           {usageLimits.metrics.monthlyApiRequests.status}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-base font-bold text-slate-900">
-                        {usageLimits.metrics.monthlyApiRequests.observedCount.toLocaleString()} /{" "}
-                        {usageLimits.metrics.monthlyApiRequests.freeLimitReference.toLocaleString()}{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.monthlyApiRequests.observedCount, lang)} /{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.monthlyApiRequests.freeLimitReference, lang)}{" "}
                         <span className="text-xs font-normal text-slate-500">({usageLimits.metrics.monthlyApiRequests.percentUsed}%)</span>
                       </div>
                       <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -1228,118 +1235,128 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       </div>
                       <p className="text-[11px] text-slate-600">{usageLimits.metrics.monthlyApiRequests.source}</p>
                       <p className="text-[10px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1">
-                        <strong>External: {usageLimits.metrics.monthlyApiRequests.externalStatus}</strong> — {usageLimits.metrics.monthlyApiRequests.externalNote}
+                        <strong>{lang === "en" ? "External:" : "Luaran:"} {usageLimits.metrics.monthlyApiRequests.externalStatus}</strong> — {usageLimits.metrics.monthlyApiRequests.externalNote}
                       </p>
                     </div>
 
                     {/* 3. Database Reads */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">3. Database Reads (Firestore &amp; Server JSON)</span>
+                        <span className="font-bold text-slate-900">
+                          {lang === "en" ? "3. Database Reads (Firestore & Server JSON)" : "3. Bacaan Pangkalan Data (Firestore & JSON Pelayan)"}
+                        </span>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${STATUS_STYLE[usageLimits.metrics.databaseReads.status] || STATUS_STYLE.ACTIVE}`}>
                           {usageLimits.metrics.databaseReads.status}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-base font-bold text-slate-900">
-                        {usageLimits.metrics.databaseReads.firestoreObservedToday.toLocaleString()} Firestore /{" "}
-                        {usageLimits.metrics.databaseReads.freeLimit.toLocaleString()}{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.databaseReads.firestoreObservedToday, lang)} Firestore /{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.databaseReads.freeLimit, lang)}{" "}
                         <span className="text-xs font-normal text-slate-500">({usageLimits.metrics.databaseReads.percentUsed}%)</span>
                       </div>
                       <div className="text-[11px] font-mono text-slate-700">
-                        Bacaan Store JSON Pelayan Hari Ini: <strong>{usageLimits.metrics.databaseReads.serverStoreReadsToday.toLocaleString()}</strong>
+                        {t.serverDb.serverJsonReadsToday} <strong>{formatLocalizedNumber(usageLimits.metrics.databaseReads.serverStoreReadsToday, lang)}</strong>
                       </div>
                       <p className="text-[10px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1">
-                        <strong>External: {usageLimits.metrics.databaseReads.externalStatus}</strong> — {usageLimits.metrics.databaseReads.externalNote}
+                        <strong>{lang === "en" ? "External:" : "Luaran:"} {usageLimits.metrics.databaseReads.externalStatus}</strong> — {usageLimits.metrics.databaseReads.externalNote}
                       </p>
                     </div>
 
                     {/* 4. Database Writes */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">4. Database Writes (Firestore &amp; Server JSON)</span>
+                        <span className="font-bold text-slate-900">
+                          {lang === "en" ? "4. Database Writes (Firestore & Server JSON)" : "4. Tulisan Pangkalan Data (Firestore & JSON Pelayan)"}
+                        </span>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${STATUS_STYLE[usageLimits.metrics.databaseWrites.status] || STATUS_STYLE.ACTIVE}`}>
                           {usageLimits.metrics.databaseWrites.status}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-base font-bold text-slate-900">
-                        {usageLimits.metrics.databaseWrites.firestoreObservedToday.toLocaleString()} Firestore /{" "}
-                        {usageLimits.metrics.databaseWrites.freeLimit.toLocaleString()}{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.databaseWrites.firestoreObservedToday, lang)} Firestore /{" "}
+                        {formatLocalizedNumber(usageLimits.metrics.databaseWrites.freeLimit, lang)}{" "}
                         <span className="text-xs font-normal text-slate-500">({usageLimits.metrics.databaseWrites.percentUsed}%)</span>
                       </div>
                       <div className="text-[11px] font-mono text-slate-700">
-                        Tulisan Store JSON Pelayan Hari Ini: <strong>{usageLimits.metrics.databaseWrites.serverStoreWritesToday.toLocaleString()}</strong>
+                        {t.serverDb.serverJsonWritesToday} <strong>{formatLocalizedNumber(usageLimits.metrics.databaseWrites.serverStoreWritesToday, lang)}</strong>
                       </div>
                       <p className="text-[10px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1">
-                        <strong>External: {usageLimits.metrics.databaseWrites.externalStatus}</strong> — {usageLimits.metrics.databaseWrites.externalNote}
+                        <strong>{lang === "en" ? "External:" : "Luaran:"} {usageLimits.metrics.databaseWrites.externalStatus}</strong> — {usageLimits.metrics.databaseWrites.externalNote}
                       </p>
                     </div>
 
                     {/* 5. Storage Consumption */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">5. Storage Consumption (Measured on Disk)</span>
+                        <span className="font-bold text-slate-900">
+                          {lang === "en" ? "5. Storage Consumption (Measured on Disk)" : "5. Penggunaan Storan (Diukur pada Cakera)"}
+                        </span>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${STATUS_STYLE[usageLimits.metrics.storageUsage.status] || STATUS_STYLE.ACTIVE}`}>
                           {usageLimits.metrics.storageUsage.status}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-xs text-slate-800 space-y-0.5">
-                        <div>Data Aktif (data/): <strong>{formatBytes(usageLimits.metrics.storageUsage.activeDataBytes)}</strong></div>
-                        <div>Sandaran (data/backups/): <strong>{formatBytes(usageLimits.metrics.storageUsage.backupStorageBytes)}</strong></div>
-                        <div>Binaan Frontend (dist/): <strong>{formatBytes(usageLimits.metrics.storageUsage.distBuildBytes)}</strong> (Pages file limit: 25 MiB)</div>
+                        <div>{lang === "en" ? "Active Data (data/):" : "Data Aktif (data/):"} <strong>{formatBytes(usageLimits.metrics.storageUsage.activeDataBytes)}</strong></div>
+                        <div>{lang === "en" ? "Backups (data/backups/):" : "Sandaran (data/backups/):"} <strong>{formatBytes(usageLimits.metrics.storageUsage.backupStorageBytes)}</strong></div>
+                        <div>{lang === "en" ? "Frontend Build (dist/):" : "Binaan Frontend (dist/):"} <strong>{formatBytes(usageLimits.metrics.storageUsage.distBuildBytes)}</strong> ({lang === "en" ? "Pages file limit: 25 MiB" : "Had fail Pages: 25 MiB"})</div>
                       </div>
                       <p className="text-[10px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1">
-                        <strong>External: {usageLimits.metrics.storageUsage.externalStatus}</strong> — {usageLimits.metrics.storageUsage.externalNote}
+                        <strong>{lang === "en" ? "External:" : "Luaran:"} {usageLimits.metrics.storageUsage.externalStatus}</strong> — {usageLimits.metrics.storageUsage.externalNote}
                       </p>
                     </div>
 
                     {/* 6. Request Limits & CPU Budget */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">6. Request Limits &amp; Worker 10ms CPU Budget</span>
+                        <span className="font-bold text-slate-900">
+                          {lang === "en" ? "6. Request Limits & Worker 10ms CPU Budget" : "6. Had Permintaan & Bajet CPU Worker 10ms"}
+                        </span>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${STATUS_STYLE[usageLimits.metrics.cpuUsage.status] || STATUS_STYLE.ACTIVE}`}>
                           {usageLimits.metrics.cpuUsage.status}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-xs text-slate-800 space-y-0.5">
-                        <div>Had Keselamatan API 100%: <strong>Auto HTTP 429 @ 100,000 req/hari</strong></div>
-                        <div>CPU Proses Node: <strong>{usageLimits.metrics.cpuUsage.processCpuPercent}%</strong> ({usageLimits.metrics.cpuUsage.cpuCores} cores) • Avg: <strong>{usageLimits.metrics.cpuUsage.avgApiDurationMs} ms</strong></div>
-                        <div>Permintaan &gt;10ms Hari Ini: <strong>{usageLimits.metrics.cpuUsage.slowRequestsOver10MsToday}</strong> (Had Worker Free: {usageLimits.metrics.cpuUsage.workerCpuBudgetMs}ms)</div>
+                        <div>{lang === "en" ? "API 100% Safety Limit:" : "Had Keselamatan API 100%:"} <strong>{lang === "en" ? "Auto HTTP 429 @ 100,000 req/day" : "Auto HTTP 429 @ 100,000 perm/hari"}</strong></div>
+                        <div>{lang === "en" ? "Node Process CPU:" : "CPU Proses Node:"} <strong>{usageLimits.metrics.cpuUsage.processCpuPercent}%</strong> ({usageLimits.metrics.cpuUsage.cpuCores} {lang === "en" ? "cores" : "teras"}) • {lang === "en" ? "Avg:" : "Purata:"} <strong>{usageLimits.metrics.cpuUsage.avgApiDurationMs} ms</strong></div>
+                        <div>{lang === "en" ? "Requests >10ms Today:" : "Permintaan >10ms Hari Ini:"} <strong>{usageLimits.metrics.cpuUsage.slowRequestsOver10MsToday}</strong> ({lang === "en" ? "Worker Free limit:" : "Had Worker Percuma:"} {usageLimits.metrics.cpuUsage.workerCpuBudgetMs}ms)</div>
                       </div>
                       <p className="text-[10px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1">
-                        <strong>External: {usageLimits.metrics.cpuUsage.externalStatus}</strong> — {usageLimits.metrics.cpuUsage.externalNote}
+                        <strong>{lang === "en" ? "External:" : "Luaran:"} {usageLimits.metrics.cpuUsage.externalStatus}</strong> — {usageLimits.metrics.cpuUsage.externalNote}
                       </p>
                     </div>
 
                     {/* 7. Bandwidth Usage */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">7. Bandwidth Usage</span>
+                        <span className="font-bold text-slate-900">{lang === "en" ? "7. Bandwidth Usage" : "7. Penggunaan Jalur Lebar"}</span>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${STATUS_STYLE[usageLimits.metrics.bandwidthUsage.status] || STATUS_STYLE.ACTIVE}`}>
                           {usageLimits.metrics.bandwidthUsage.status}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-xs text-slate-800 space-y-0.5">
-                        <div>Egress API Express Hari Ini: <strong>{formatBytes(usageLimits.metrics.bandwidthUsage.observedExpressEgressBytesToday)}</strong></div>
-                        <div>Polisi Aset Statik: <strong>{usageLimits.metrics.bandwidthUsage.cloudflarePagesStaticPolicy}</strong></div>
+                        <div>{lang === "en" ? "Express API Egress Today:" : "Egress API Express Hari Ini:"} <strong>{formatBytes(usageLimits.metrics.bandwidthUsage.observedExpressEgressBytesToday)}</strong></div>
+                        <div>{lang === "en" ? "Static Asset Policy:" : "Polisi Aset Statik:"} <strong>{usageLimits.metrics.bandwidthUsage.cloudflarePagesStaticPolicy}</strong></div>
                       </div>
                       <p className="text-[10px] text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1">
-                        <strong>External: {usageLimits.metrics.bandwidthUsage.externalStatus}</strong> — {usageLimits.metrics.bandwidthUsage.externalNote}
+                        <strong>{lang === "en" ? "External:" : "Luaran:"} {usageLimits.metrics.bandwidthUsage.externalStatus}</strong> — {usageLimits.metrics.bandwidthUsage.externalNote}
                       </p>
                     </div>
 
                     {/* 8. Estimated Monthly Cost */}
                     <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-emerald-950">8. Estimated Monthly Cost</span>
+                        <span className="font-bold text-emerald-950">{lang === "en" ? "8. Estimated Monthly Cost" : "8. Anggaran Kos Bulanan"}</span>
                         <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-white text-emerald-800 border border-emerald-300">
-                          FREE TIER LOCKED
+                          {lang === "en" ? "FREE TIER LOCKED" : "PELAN PERCUMA DIKUNCI"}
                         </span>
                       </div>
                       <div className="font-mono tabular-nums text-2xl font-bold text-emerald-900">
-                        {usageLimits.estimatedMonthlyCost} / bulan
+                        {usageLimits.estimatedMonthlyCost} / {lang === "en" ? "month" : "bulan"}
                       </div>
                       <p className="text-[11px] text-emerald-900">
-                        Tiada Cloud Load Balancer berbayar, tiada Cloud Run min-instances, tiada Cloud Storage berbayar, dan tiada Firestore Managed Backup diaktifkan.
+                        {lang === "en"
+                          ? "Zero paid Cloud Load Balancers, zero paid Cloud Run min-instances, zero paid Cloud Storage, and zero paid Firestore Managed Backups are enabled."
+                          : "Tiada Cloud Load Balancer berbayar, tiada Cloud Run min-instances, tiada Cloud Storage berbayar, dan tiada Firestore Managed Backup diaktifkan."}
                       </p>
                     </div>
                   </div>
@@ -1348,14 +1365,14 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                   <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-900">
-                        Audit Keserasian Firestore Enterprise (Pelan Percuma)
+                        {lang === "en" ? "Firestore Enterprise Free Tier Compatibility Audit" : "Audit Keserasian Firestore Enterprise (Pelan Percuma)"}
                       </span>
                       <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        TIADA MIGRASI AUTOMATIK
+                        {lang === "en" ? "NO AUTO MIGRATION" : "TIADA MIGRASI AUTOMATIK"}
                       </span>
                     </div>
                     <div className="text-[11px] font-mono text-slate-600">
-                      Project: {usageLimits.firestoreAudit.projectId} • DB: {usageLimits.firestoreAudit.databaseId}
+                      {lang === "en" ? "Project:" : "Projek:"} {usageLimits.firestoreAudit.projectId} • DB: {usageLimits.firestoreAudit.databaseId}
                     </div>
                     <p className="text-xs text-slate-700">{usageLimits.firestoreAudit.summaryNote}</p>
                   </div>
@@ -1370,8 +1387,14 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-700 flex items-start gap-2.5">
                 <Server className="w-4 h-4 text-[#0b3c7a] shrink-0 mt-0.5" />
                 <div>
-                  <strong>Logical Application Node Pool (Simulasi 1 Runtime — Bukan 3 VM Fizikal):</strong>{" "}
-                  Setiap nod mendengar pada port loopback berasingan dalam satu proses Express tunggal untuk memantau Health Check, Request Count, HTTP Response Status, Error Rate, dan Last Heartbeat pada kos RM0.00.
+                  <strong>
+                    {lang === "en"
+                      ? "Logical Application Node Pool (1 Runtime Simulation — Not 3 Paid Physical VMs):"
+                      : "Kolam Nod Aplikasi Logik (Simulasi 1 Runtime — Bukan 3 VM Fizikal):"}
+                  </strong>{" "}
+                  {lang === "en"
+                    ? "Each node listens on a separate loopback port inside a single Express process to track Health Check, Request Count, HTTP Response Status, Error Rate, and Last Heartbeat at RM0.00 cost."
+                    : "Setiap nod mendengar pada port loopback berasingan dalam satu proses Express tunggal untuk memantau Health Check, Request Count, HTTP Response Status, Error Rate, dan Last Heartbeat pada kos RM0.00."}
                 </div>
               </div>
 
@@ -1395,20 +1418,20 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
 
                       <div className="grid grid-cols-2 gap-2 text-xs font-mono tabular-nums pt-1 border-t border-slate-100">
                         <div>
-                          <span className="text-[10px] text-slate-400 block">ENDPOINT</span>
+                          <span className="text-[10px] text-slate-400 block">{lang === "en" ? "ENDPOINT" : "TITIK HUJUNG"}</span>
                           <span className="font-bold text-slate-800">{srv.host}:{srv.port ?? "STOP"}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-400 block">HEALTH CHECK</span>
+                          <span className="text-[10px] text-slate-400 block">{lang === "en" ? "HEALTH CHECK" : "SEMAKAN KESIHATAN"}</span>
                           <span className="font-bold text-slate-800">{srv.lastHealthStatus}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-400 block">RESPONSE STATUS</span>
+                          <span className="text-[10px] text-slate-400 block">{lang === "en" ? "RESPONSE STATUS" : "STATUS RESPONS"}</span>
                           <span className="font-bold text-slate-800">HTTP {srv.lastHttpStatus ?? "—"}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-400 block">UPTIME</span>
-                          <span className="font-bold text-slate-800">{formatUptime(srv.uptimeSeconds)}</span>
+                          <span className="text-[10px] text-slate-400 block">{lang === "en" ? "UPTIME" : "MASA HIDUP"}</span>
+                          <span className="font-bold text-slate-800">{formatUptime(srv.uptimeSeconds, t.serverDb.hourShort)}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Cpu className="w-3 h-3 text-slate-400" />
@@ -1418,14 +1441,14 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                           <MemoryStick className="w-3 h-3 text-slate-400" />
                           <span>RAM: <strong>{srv.memoryUsedMb} MB</strong></span>
                         </div>
-                        <div>Req: <strong>{srv.totalRequests}</strong></div>
-                        <div>Conn: <strong>{srv.activeConnections}</strong></div>
-                        <div>Avg: <strong>{srv.avgResponseMs} ms</strong></div>
-                        <div>Err: <strong>{srv.errorCount} ({srv.errorRatePercent}%)</strong></div>
+                        <div>{lang === "en" ? "Req:" : "Perm:"} <strong>{srv.totalRequests}</strong></div>
+                        <div>{lang === "en" ? "Conn:" : "Samb:"} <strong>{srv.activeConnections}</strong></div>
+                        <div>{lang === "en" ? "Avg:" : "Purata:"} <strong>{srv.avgResponseMs} ms</strong></div>
+                        <div>{lang === "en" ? "Err:" : "Ralat:"} <strong>{srv.errorCount} ({srv.errorRatePercent}%)</strong></div>
                       </div>
 
                       <div className="text-[10px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 font-mono">
-                        <span>Heartbeat: {srv.lastHealthCheckAt ? new Date(srv.lastHealthCheckAt).toLocaleTimeString() : "—"}</span>
+                        <span>{lang === "en" ? "Heartbeat:" : "Degupan:"} {srv.lastHealthCheckAt ? formatLocalizedTime(srv.lastHealthCheckAt, lang) : "—"}</span>
                         <span>DB: {srv.dbLatencyMs !== null ? `${srv.dbLatencyMs} ms` : "—"}</span>
                       </div>
                     </div>
@@ -1439,7 +1462,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                         className="px-2 py-1.5 rounded text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <Power className="w-3 h-3" />
-                        <span>Active</span>
+                        <span>{lang === "en" ? "Active" : "Aktif"}</span>
                       </button>
                       <button
                         type="button"
@@ -1448,7 +1471,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                         className="px-2 py-1.5 rounded text-[11px] font-semibold bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <Wrench className="w-3 h-3" />
-                        <span>Maint.</span>
+                        <span>{lang === "en" ? "Maint." : "Selenggara"}</span>
                       </button>
                       <button
                         type="button"
@@ -1457,7 +1480,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                         className="px-2 py-1.5 rounded text-[11px] font-semibold bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <PowerOff className="w-3 h-3" />
-                        <span>Offline</span>
+                        <span>{lang === "en" ? "Offline" : "Luar Talian"}</span>
                       </button>
                     </div>
                   </div>
@@ -1469,14 +1492,14 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                 <table className="w-full text-left text-xs font-mono tabular-nums">
                   <thead className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase text-slate-500">
                     <tr>
-                      <th className="py-2.5 px-3">Node ID / Name</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">Health Check</th>
-                      <th className="py-2.5 px-3 text-right">Requests</th>
-                      <th className="py-2.5 px-3">Response Status</th>
-                      <th className="py-2.5 px-3 text-right">Avg / P95</th>
-                      <th className="py-2.5 px-3 text-right">Errors</th>
-                      <th className="py-2.5 px-3">Last Heartbeat</th>
+                      <th className="py-2.5 px-3">{lang === "en" ? "Node ID / Name" : "ID / Nama Nod"}</th>
+                      <th className="py-2.5 px-3">{lang === "en" ? "Status" : "Status"}</th>
+                      <th className="py-2.5 px-3">{lang === "en" ? "Health Check" : "Kesihatan"}</th>
+                      <th className="py-2.5 px-3 text-right">{lang === "en" ? "Requests" : "Permintaan"}</th>
+                      <th className="py-2.5 px-3">{lang === "en" ? "Response Status" : "Status Respons"}</th>
+                      <th className="py-2.5 px-3 text-right">{lang === "en" ? "Avg / P95" : "Purata / P95"}</th>
+                      <th className="py-2.5 px-3 text-right">{lang === "en" ? "Errors" : "Ralat"}</th>
+                      <th className="py-2.5 px-3">{lang === "en" ? "Last Heartbeat" : "Degupan Terkini"}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1492,12 +1515,12 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                           </span>
                         </td>
                         <td className="py-2.5 px-3 font-bold text-slate-700">{s.lastHealthStatus}</td>
-                        <td className="py-2.5 px-3 text-right">{s.totalRequests} ({s.activeConnections} conn)</td>
+                        <td className="py-2.5 px-3 text-right">{s.totalRequests} ({s.activeConnections} {lang === "en" ? "conn" : "samb"})</td>
                         <td className="py-2.5 px-3 font-bold text-slate-800">HTTP {s.lastHttpStatus ?? "—"}</td>
                         <td className="py-2.5 px-3 text-right">{s.avgResponseMs} / {s.p95ResponseMs} ms</td>
                         <td className="py-2.5 px-3 text-right">{s.errorCount} ({s.errorRatePercent}%)</td>
                         <td className="py-2.5 px-3 text-slate-500">
-                          {s.lastHealthCheckAt ? new Date(s.lastHealthCheckAt).toLocaleTimeString() : "—"}
+                          {s.lastHealthCheckAt ? formatLocalizedTime(s.lastHealthCheckAt, lang) : "—"}
                         </td>
                       </tr>
                     ))}
@@ -1574,13 +1597,21 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                 </div>
 
                 <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
-                  <strong>Nota Batasan Platform Free Tier:</strong> Algoritma <code className="font-mono">Least Connections</code> mengukur <code className="font-mono">activeConnections</code> sebenar pada runtime Express tempatan. Bagi persekitaran <em>Cloudflare Workers Free</em> tanpa <em>Durable Objects</em> berbayar, pengesanan sambungan aktif rentas PoP global tidak disokong dan hanya <code className="font-mono">round_robin</code>/<code className="font-mono">failover</code> tempatan digunakan.
+                  {lang === "en" ? (
+                    <>
+                      <strong>Free Tier Platform Limit Note:</strong> The <code className="font-mono">Least Connections</code> algorithm measures actual <code className="font-mono">activeConnections</code> on the local Express runtime. On <em>Cloudflare Workers Free</em> without paid <em>Durable Objects</em>, global cross-PoP active connection tracking is unsupported and local <code className="font-mono">round_robin</code>/<code className="font-mono">failover</code> is used instead.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Nota Batasan Platform Pelan Percuma:</strong> Algoritma <code className="font-mono">Least Connections</code> mengukur <code className="font-mono">activeConnections</code> sebenar pada runtime Express tempatan. Bagi persekitaran <em>Cloudflare Workers Free</em> tanpa <em>Durable Objects</em> berbayar, pengesanan sambungan aktif rentas PoP global tidak disokong dan hanya <code className="font-mono">round_robin</code>/<code className="font-mono">failover</code> tempatan digunakan.
+                    </>
+                  )}
                 </div>
 
                 {lb?.lastFailoverDetail && (
                   <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
                     <strong>{lang === "en" ? "Latest Failover Event:" : "Rekod Failover Terkini:"}</strong>{" "}
-                    {lb.lastFailoverDetail} ({lb.lastFailoverAt ? new Date(lb.lastFailoverAt).toLocaleString() : ""})
+                    {lb.lastFailoverDetail} ({lb.lastFailoverAt ? formatLocalizedDateTime(lb.lastFailoverAt, lang) : ""})
                   </div>
                 )}
               </div>
@@ -1605,9 +1636,9 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       onChange={(e) => setLbTestCount(Number(e.target.value))}
                       className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono bg-white"
                     >
-                      <option value={6}>6 requests</option>
-                      <option value={12}>12 requests</option>
-                      <option value={20}>20 requests</option>
+                      <option value={6}>6 {lang === "en" ? "requests" : "permintaan"}</option>
+                      <option value={12}>12 {lang === "en" ? "requests" : "permintaan"}</option>
+                      <option value={20}>20 {lang === "en" ? "requests" : "permintaan"}</option>
                     </select>
                     <button
                       type="button"
@@ -1616,7 +1647,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       className="px-3.5 py-1.5 bg-[#061830] hover:bg-[#0b3c7a] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                     >
                       <Play className="w-3.5 h-3.5" />
-                      <span>{actionBusy === "lb-test" ? "Running..." : (lang === "en" ? "Run Dispatch Test" : "Jalankan Ujian")}</span>
+                      <span>{actionBusy === "lb-test" ? t.serverDb.running : (lang === "en" ? "Run Dispatch Test" : "Jalankan Ujian")}</span>
                     </button>
                   </div>
                 </div>
@@ -1625,7 +1656,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                   <div className="space-y-3 pt-2 border-t border-slate-100">
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-xs tabular-nums">
                       <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                        <span className="text-[10px] text-slate-400 block">SUCCEEDED</span>
+                        <span className="text-[10px] text-slate-400 block">{t.serverDb.succeeded}</span>
                         <span className="font-bold text-emerald-700">{lbTestResult.succeededCount} / {lbTestResult.requestedCount}</span>
                       </div>
                       <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
@@ -1641,7 +1672,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                         <span className="font-bold text-slate-900">{lbTestResult.distribution["server-c"] || 0}</span>
                       </div>
                       <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                        <span className="text-[10px] text-slate-400 block">FAILED</span>
+                        <span className="text-[10px] text-slate-400 block">{lang === "en" ? "FAILED" : "GAGAL"}</span>
                         <span className="font-bold text-rose-700">{lbTestResult.failedCount}</span>
                       </div>
                     </div>
@@ -1651,12 +1682,12 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                         <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase">
                           <tr>
                             <th className="py-2 px-3">#</th>
-                            <th className="py-2 px-3">Routed Node</th>
-                            <th className="py-2 px-3">Port</th>
+                            <th className="py-2 px-3">{lang === "en" ? "Routed Node" : "Nod Dihalakan"}</th>
+                            <th className="py-2 px-3">{lang === "en" ? "Port" : "Port"}</th>
                             <th className="py-2 px-3">HTTP</th>
-                            <th className="py-2 px-3 text-right">Latency</th>
-                            <th className="py-2 px-3 text-right">DB Check</th>
-                            <th className="py-2 px-3">Failover</th>
+                            <th className="py-2 px-3 text-right">{lang === "en" ? "Latency" : "Latensi"}</th>
+                            <th className="py-2 px-3 text-right">{lang === "en" ? "DB Check" : "Semak DB"}</th>
+                            <th className="py-2 px-3">{lang === "en" ? "Failover" : "Failover"}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1692,7 +1723,11 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                   <div>
                     <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <Database className="w-4 h-4 text-[#0b3c7a]" />
-                      <span>Database Monitoring — Unified Single Database Layer</span>
+                      <span>
+                        {lang === "en"
+                          ? "Database Monitoring — Unified Single Database Layer"
+                          : "Pemantauan Pangkalan Data — Lapisan Tunggal Bersepadu"}
+                      </span>
                     </h4>
                     <p className="text-xs text-slate-500 mt-0.5">{dbStats.engine}</p>
                   </div>
@@ -1703,7 +1738,11 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     className="px-3 py-1.5 bg-[#0b3c7a] hover:bg-[#093163] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
                   >
                     <Activity className="w-3.5 h-3.5" />
-                    <span>{actionBusy === "fs-ping" ? "Pinging..." : (lang === "en" ? "Ping Firestore" : "Uji Sambungan Firestore")}</span>
+                    <span>
+                      {actionBusy === "fs-ping"
+                        ? (lang === "en" ? "Pinging..." : "Menguji...")
+                        : (lang === "en" ? "Ping Firestore" : "Uji Sambungan Firestore")}
+                    </span>
                   </button>
                 </div>
 
@@ -1711,17 +1750,21 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   {/* 4.1 Database Overview */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
-                    <div className="text-[10px] uppercase text-slate-500 font-bold">1. Database Overview</div>
-                    <div className="font-mono text-slate-900 font-bold">Project: {dbStats.firestore.projectId}</div>
+                    <div className="text-[10px] uppercase text-slate-500 font-bold">
+                      {lang === "en" ? "1. Database Overview" : "1. Gambaran Pangkalan Data"}
+                    </div>
+                    <div className="font-mono text-slate-900 font-bold">{lang === "en" ? "Project:" : "Projek:"} {dbStats.firestore.projectId}</div>
                     <div className="font-mono text-slate-600 break-all text-[11px]">DB ID: {dbStats.firestore.databaseId}</div>
                     <div className="font-mono text-slate-700 pt-1">
-                      Registered DBs: <strong>{dbStats.registeredDatabasesCount}</strong> • Users: <strong>{dbStats.registeredUsersCount}</strong>
+                      {lang === "en" ? "Registered DBs:" : "DB Berdaftar:"} <strong>{dbStats.registeredDatabasesCount}</strong> • {lang === "en" ? "Users:" : "Pengguna:"} <strong>{dbStats.registeredUsersCount}</strong>
                     </div>
                   </div>
 
                   {/* 4.2 Database Status */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
-                    <div className="text-[10px] uppercase text-slate-500 font-bold">2. Database Status</div>
+                    <div className="text-[10px] uppercase text-slate-500 font-bold">
+                      {lang === "en" ? "2. Database Status" : "2. Status Pangkalan Data"}
+                    </div>
                     <div className="font-mono flex items-center justify-between">
                       <span>Firestore Enterprise:</span>
                       <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold uppercase">
@@ -1729,27 +1772,55 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       </span>
                     </div>
                     <div className="font-mono flex items-center justify-between">
-                      <span>Single-DB Invariant:</span>
+                      <span>{lang === "en" ? "Single-DB Invariant:" : "Ketekalan DB Tunggal:"}</span>
                       <span className="font-bold text-emerald-700">
-                        {dbStats.singleDatabaseInvariant ? "VERIFIED (NO SPLIT-BRAIN)" : "CHECK"}
+                        {dbStats.singleDatabaseInvariant
+                          ? (lang === "en" ? "VERIFIED (NO SPLIT-BRAIN)" : "DISAHKAN (TUNGGAL)")
+                          : (lang === "en" ? "CHECK" : "SEMAK")}
                       </span>
                     </div>
                   </div>
 
                   {/* 4.3 Database Connection Monitoring */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 font-mono tabular-nums">
-                    <div className="text-[10px] uppercase text-slate-500 font-bold font-sans">3. Database Connection Monitoring</div>
-                    <div>Firestore Ping RTT: <strong>{dbStats.firestore.latencyMs !== null ? `${dbStats.firestore.latencyMs} ms` : "Not pinged yet"}</strong></div>
-                    <div>Local Disk Read Latency: <strong>{dbStats.readLatencyMs} ms</strong></div>
-                    <div>Active Authenticated Sessions: <strong>{dbStats.activeSessionsCount}</strong></div>
+                    <div className="text-[10px] uppercase text-slate-500 font-bold font-sans">
+                      {lang === "en" ? "3. Database Connection Monitoring" : "3. Pemantauan Sambungan Pangkalan Data"}
+                    </div>
+                    <div>
+                      Firestore Ping RTT:{" "}
+                      <strong>
+                        {dbStats.firestore.latencyMs !== null
+                          ? `${dbStats.firestore.latencyMs} ms`
+                          : (lang === "en" ? "Not pinged yet" : "Belum diuji")}
+                      </strong>
+                    </div>
+                    <div>
+                      {lang === "en" ? "Local Disk Read Latency:" : "Latensi Bacaan Cakera Tempatan:"}{" "}
+                      <strong>{dbStats.readLatencyMs} ms</strong>
+                    </div>
+                    <div>
+                      {lang === "en" ? "Active Authenticated Sessions:" : "Sesi Disahkan Aktif:"}{" "}
+                      <strong>{dbStats.activeSessionsCount}</strong>
+                    </div>
                   </div>
 
                   {/* 4.4 Database Usage */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 font-mono tabular-nums">
-                    <div className="text-[10px] uppercase text-slate-500 font-bold font-sans">4. Database Usage (Today &amp; Disk)</div>
-                    <div>Firestore Reads/Writes: <strong>{usageLimits?.metrics.databaseReads.firestoreObservedToday ?? 0}R / {usageLimits?.metrics.databaseWrites.firestoreObservedToday ?? 0}W</strong></div>
-                    <div>Server JSON Store Reads/Writes: <strong>{usageLimits?.metrics.databaseReads.serverStoreReadsToday ?? 0}R / {usageLimits?.metrics.databaseWrites.serverStoreWritesToday ?? 0}W</strong></div>
-                    <div>Active Persistence Size (data/): <strong>{formatBytes(dbStats.totalStorageBytes)}</strong></div>
+                    <div className="text-[10px] uppercase text-slate-500 font-bold font-sans">
+                      {lang === "en" ? "4. Database Usage (Today & Disk)" : "4. Penggunaan Pangkalan Data (Hari Ini & Storan)"}
+                    </div>
+                    <div>
+                      {lang === "en" ? "Firestore Reads/Writes:" : "Bacaan/Tulisan Firestore:"}{" "}
+                      <strong>{usageLimits?.metrics.databaseReads.firestoreObservedToday ?? 0}R / {usageLimits?.metrics.databaseWrites.firestoreObservedToday ?? 0}W</strong>
+                    </div>
+                    <div>
+                      {lang === "en" ? "Server JSON Store Reads/Writes:" : "Bacaan/Tulisan Storan JSON:"}{" "}
+                      <strong>{usageLimits?.metrics.databaseReads.serverStoreReadsToday ?? 0}R / {usageLimits?.metrics.databaseWrites.serverStoreWritesToday ?? 0}W</strong>
+                    </div>
+                    <div>
+                      {lang === "en" ? "Active Persistence Size (data/):" : "Saiz Storan Aktif (data/):"}{" "}
+                      <strong>{formatBytes(dbStats.totalStorageBytes)}</strong>
+                    </div>
                   </div>
                 </div>
 
@@ -1758,11 +1829,11 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                   <table className="w-full text-left text-xs font-mono tabular-nums">
                     <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase">
                       <tr>
-                        <th className="py-2 px-3">Store File</th>
-                        <th className="py-2 px-3">Description</th>
-                        <th className="py-2 px-3 text-right">Records</th>
-                        <th className="py-2 px-3 text-right">Size</th>
-                        <th className="py-2 px-3">Last Modified</th>
+                        <th className="py-2 px-3">{lang === "en" ? "Store File" : "Fail Storan"}</th>
+                        <th className="py-2 px-3">{lang === "en" ? "Description" : "Keterangan"}</th>
+                        <th className="py-2 px-3 text-right">{lang === "en" ? "Records" : "Rekod"}</th>
+                        <th className="py-2 px-3 text-right">{lang === "en" ? "Size" : "Saiz"}</th>
+                        <th className="py-2 px-3">{lang === "en" ? "Last Modified" : "Kemas Kini Terakhir"}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1773,7 +1844,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                           <td className="py-2 px-3 text-right">{st.records}</td>
                           <td className="py-2 px-3 text-right">{formatBytes(st.sizeBytes)}</td>
                           <td className="py-2 px-3 text-slate-500">
-                            {st.updatedAt ? new Date(st.updatedAt).toLocaleString() : "—"}
+                            {st.updatedAt ? formatLocalizedDateTime(st.updatedAt, lang) : "—"}
                           </td>
                         </tr>
                       ))}
@@ -1785,7 +1856,9 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   {/* 4.5 Database Error Logs */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                    <div className="text-[10px] uppercase text-slate-500 font-bold">5. Database Error Logs</div>
+                    <div className="text-[10px] uppercase text-slate-500 font-bold">
+                      {lang === "en" ? "5. Database Error Logs" : "5. Log Ralat Pangkalan Data"}
+                    </div>
                     {(() => {
                       const dbErrLogs = logs.filter(
                         (l) => l.level === "ERROR" || l.source.toLowerCase().includes("db") || l.source.toLowerCase().includes("firestore")
@@ -1793,7 +1866,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       if (dbErrLogs.length === 0) {
                         return (
                           <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-2">
-                            0 ralat pangkalan data atau Firestore direkodkan dalam sesi semasa.
+                            {t.serverDb.zeroErrorsRecorded}
                           </p>
                         );
                       }
@@ -1811,52 +1884,81 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
 
                   {/* 4.6 Database Security & Multi-Instance JSON Consistency Audit */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
-                    <div className="text-[10px] uppercase text-slate-500 font-bold">6. Database Security &amp; Multi-Instance Audit</div>
+                    <div className="text-[10px] uppercase text-slate-500 font-bold">
+                      {lang === "en" ? "6. Database Security & Multi-Instance Audit" : "6. Audit Keselamatan & Konsistensi Multi-Nod"}
+                    </div>
                     <div className="text-slate-800">
-                      • <code className="font-mono">firestore.rules</code> pengasingan syarikat (<code className="font-mono">ownerId</code>) kekal aktif (tiada pelemahan).
+                      {lang === "en" ? (
+                        <>• <code className="font-mono">firestore.rules</code> company isolation (<code className="font-mono">ownerId</code>) remains strictly enforced.</>
+                      ) : (
+                        <>• <code className="font-mono">firestore.rules</code> pengasingan syarikat (<code className="font-mono">ownerId</code>) kekal aktif (tiada pelemahan).</>
+                      )}
                     </div>
                     <div className="text-amber-900 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 text-[11px]">
-                      <strong>Audit Konsistensi JSON Multi-Instance:</strong> Fail <code className="font-mono">server_sessions.json</code>,{" "}
-                      <code className="font-mono">server_users.json</code>, <code className="font-mono">server_databases.json</code> &amp;{" "}
-                      <code className="font-mono">quota_usage.json</code> selamat dengan <em>atomic rename</em> pada 1 Express origin, tetapi tidak sesuai dikongsi merentasi pekerja tanpa keadaan (stateless workers) tanpa migrasi ke D1/KV.
+                      {lang === "en" ? (
+                        <>
+                          <strong>Multi-Instance JSON Consistency Audit:</strong>{" "}
+                          <code className="font-mono">server_sessions.json</code>, <code className="font-mono">server_users.json</code>,{" "}
+                          <code className="font-mono">server_databases.json</code> &amp; <code className="font-mono">quota_usage.json</code> use atomic renames on a single Express origin, and are unsuitable for shared stateless workers without D1/KV migration.
+                        </>
+                      ) : (
+                        <>
+                          <strong>Audit Konsistensi JSON Multi-Instance:</strong> Fail <code className="font-mono">server_sessions.json</code>,{" "}
+                          <code className="font-mono">server_users.json</code>, <code className="font-mono">server_databases.json</code> &amp;{" "}
+                          <code className="font-mono">quota_usage.json</code> selamat dengan <em>atomic rename</em> pada 1 Express origin, tetapi tidak sesuai dikongsi merentasi pekerja tanpa keadaan (stateless workers) tanpa migrasi ke D1/KV.
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {/* 4.7 Database Backup History Summary */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase text-slate-500 font-bold">7. Database Backup History</span>
+                      <span className="text-[10px] uppercase text-slate-500 font-bold">
+                        {lang === "en" ? "7. Database Backup History" : "7. Sejarah Sandaran Pangkalan Data"}
+                      </span>
                       <button
                         type="button"
                         onClick={() => setSection("backups")}
                         className="text-[11px] font-semibold text-[#0b3c7a] underline cursor-pointer"
                       >
-                        Buka Backup Management →
+                        {lang === "en" ? "Open Backup Management →" : "Buka Pengurusan Sandaran →"}
                       </button>
                     </div>
                     <div className="font-mono text-slate-800">
-                      Snapshots: <strong>{dbStats.backupOverview.verifiedSnapshots}</strong> verified / <strong>{dbStats.backupOverview.totalSnapshots}</strong> total ({formatBytes(dbStats.backupOverview.totalBackupBytes)})
+                      {lang === "en" ? "Snapshots:" : "Snapshot:"} <strong>{dbStats.backupOverview.verifiedSnapshots}</strong> {lang === "en" ? "verified /" : "disahkan /"} <strong>{dbStats.backupOverview.totalSnapshots}</strong> {lang === "en" ? "total" : "jumlah"} ({formatBytes(dbStats.backupOverview.totalBackupBytes)})
                     </div>
                     <div className="font-mono text-[11px] text-slate-600">
-                      Terkini: {dbStats.backupOverview.latestSnapshotAt ? new Date(dbStats.backupOverview.latestSnapshotAt).toLocaleString() : "—"} ({dbStats.backupOverview.latestSnapshotStatus ?? "NONE"})
+                      {lang === "en" ? "Latest:" : "Terkini:"} {dbStats.backupOverview.latestSnapshotAt ? formatLocalizedDateTime(dbStats.backupOverview.latestSnapshotAt, lang) : "—"} ({dbStats.backupOverview.latestSnapshotStatus ?? (lang === "en" ? "NONE" : "TIADA")})
                     </div>
                   </div>
 
                   {/* 4.8 Recovery Shortcut */}
                   <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase text-slate-500 font-bold">8. Data Recovery Guard</span>
+                      <span className="text-[10px] uppercase text-slate-500 font-bold">
+                        {lang === "en" ? "8. Data Recovery Guard" : "8. Pengawal Pemulihan Data"}
+                      </span>
                       <button
                         type="button"
                         onClick={() => setSection("recovery")}
                         className="text-[11px] font-semibold text-[#0b3c7a] underline cursor-pointer"
                       >
-                        Buka Recovery Management →
+                        {lang === "en" ? "Open Recovery Management →" : "Buka Pengurusan Pemulihan →"}
                       </button>
                     </div>
                     <p className="text-[11px] text-slate-700">
-                      Pemulihan memerlukan pengesahan SHA-256, penciptaan <em>pre-restore snapshot</em> automatik, serta frasa pengesahan{" "}
-                      <code className="font-mono font-bold">PULIHKAN</code>.
+                      {lang === "en" ? (
+                        <>
+                          Recovery requires SHA-256 checksum verification, automatic <em>pre-restore snapshot</em> creation, and confirmation phrase{" "}
+                          <code className="font-mono font-bold">PULIHKAN</code>.
+                        </>
+                      ) : (
+                        <>
+                          Pemulihan memerlukan pengesahan SHA-256, penciptaan <em>snapshot pra-pemulihan</em> automatik, serta frasa pengesahan{" "}
+                          <code className="font-mono font-bold">PULIHKAN</code>.
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1875,12 +1977,18 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       <span>{lang === "en" ? "Separated Backup Storage & Integrity Manager" : "Storan Sandaran Berasingan & Pengesahan SHA-256"}</span>
                     </h4>
                     <p className="text-xs text-slate-500">
-                      Location: <code className="font-mono text-slate-800">{data.backups.storagePath}</code> • Auto Schedule:{" "}
-                      <strong>{data.config.backupPolicy.autoBackupEnabled ? `Every ${data.config.backupPolicy.scheduleIntervalHours}h` : "Disabled"}</strong>
+                      {lang === "en" ? "Location:" : "Lokasi:"} <code className="font-mono text-slate-800">{data.backups.storagePath}</code> • {lang === "en" ? "Auto Schedule:" : "Jadual Auto:"}{" "}
+                      <strong>
+                        {data.config.backupPolicy.autoBackupEnabled
+                          ? (lang === "en"
+                              ? `Every ${data.config.backupPolicy.scheduleIntervalHours}h`
+                              : `Setiap ${data.config.backupPolicy.scheduleIntervalHours}j`)
+                          : (lang === "en" ? "Disabled" : "Dimatikan")}
+                      </strong>
                     </p>
                   </div>
                   <div className="text-xs font-mono text-slate-600 tabular-nums">
-                    Total: <strong>{backupsList.length}</strong> ({formatBytes(data.backups.totalBytes)})
+                    {lang === "en" ? "Total:" : "Jumlah:"} <strong>{backupsList.length}</strong> ({formatBytes(data.backups.totalBytes)})
                   </div>
                 </div>
 
@@ -1900,7 +2008,11 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     className="px-4 py-2 bg-[#061830] hover:bg-[#0b3c7a] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <Archive className="w-3.5 h-3.5" />
-                    <span>{actionBusy === "create-backup" ? "Creating..." : (lang === "en" ? "Create Verified Backup" : "Cipta Sandaran Sekarang")}</span>
+                    <span>
+                      {actionBusy === "create-backup"
+                        ? (lang === "en" ? "Creating..." : "Menjana...")
+                        : (lang === "en" ? "Create Verified Backup" : "Cipta Sandaran Sekarang")}
+                    </span>
                   </button>
                 </div>
 
@@ -1914,13 +2026,13 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     <table className="w-full text-left text-xs font-mono tabular-nums">
                       <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase">
                         <tr>
-                          <th className="py-2 px-3">Snapshot ID</th>
-                          <th className="py-2 px-3">Trigger</th>
-                          <th className="py-2 px-3">Created</th>
-                          <th className="py-2 px-3 text-right">Size</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Snapshot ID" : "ID Snapshot"}</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Trigger" : "Pencetus"}</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Created" : "Dicipta"}</th>
+                          <th className="py-2 px-3 text-right">{lang === "en" ? "Size" : "Saiz"}</th>
                           <th className="py-2 px-3">SHA-256</th>
-                          <th className="py-2 px-3">Status</th>
-                          <th className="py-2 px-3 text-right">Actions</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Status" : "Status"}</th>
+                          <th className="py-2 px-3 text-right">{lang === "en" ? "Actions" : "Tindakan"}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1931,7 +2043,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                               <div className="text-[10px] font-sans font-normal text-slate-500 truncate max-w-[180px]">{b.note}</div>
                             </td>
                             <td className="py-2 px-3">{b.trigger}</td>
-                            <td className="py-2 px-3 text-slate-600">{new Date(b.createdAt).toLocaleString()}</td>
+                            <td className="py-2 px-3 text-slate-600">{formatLocalizedDateTime(b.createdAt, lang)}</td>
                             <td className="py-2 px-3 text-right">{formatBytes(b.sizeBytes)}</td>
                             <td className="py-2 px-3 text-slate-500">{b.sha256.slice(0, 10)}…</td>
                             <td className="py-2 px-3">
@@ -1954,7 +2066,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                                 disabled={actionBusy === `verify-${b.id}`}
                                 className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-sans font-semibold cursor-pointer"
                               >
-                                Verify
+                                {t.serverDb.verify}
                               </button>
                               <button
                                 type="button"
@@ -1972,7 +2084,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                                 }}
                                 className="px-2 py-1 rounded bg-[#0b3c7a] hover:bg-[#093163] text-white text-[11px] font-sans font-semibold cursor-pointer"
                               >
-                                Restore
+                                {t.serverDb.restore}
                               </button>
                             </td>
                           </tr>
@@ -2016,7 +2128,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     >
                       {backupsList.map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.id} [{b.trigger}] — {b.verificationStatus} ({new Date(b.createdAt).toLocaleString()})
+                          {b.id} [{b.trigger}] — {b.verificationStatus} ({formatLocalizedDateTime(b.createdAt, lang)})
                         </option>
                       ))}
                     </select>
@@ -2049,7 +2161,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
                   >
                     {actionBusy === "restore-preview"
-                      ? "Verifying..."
+                      ? (lang === "en" ? "Verifying..." : "Mengesahkan...")
                       : (lang === "en" ? "Run Integrity & Dry-Run Preview" : "Semak Integriti & Pratonton Kesan")}
                   </button>
                 </div>
@@ -2057,24 +2169,24 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                 {restorePreview?.preview && (
                   <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
                     <div className="flex items-center justify-between text-xs font-bold text-slate-900">
-                      <span>Dry-Run Impact Summary (SHA-256: {restorePreview.verificationStatus})</span>
-                      <span className="text-emerald-700">Pre-Restore Snapshot: MANDATORY</span>
+                      <span>{lang === "en" ? "Dry-Run Impact Summary" : "Ringkasan Kesan Pratonton"} (SHA-256: {restorePreview.verificationStatus})</span>
+                      <span className="text-emerald-700">{lang === "en" ? "Pre-Restore Snapshot: MANDATORY" : "Snapshot Pra-Pemulihan: WAJIB"}</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs tabular-nums">
                       <div className="bg-white p-2.5 rounded border border-slate-200">
-                        <span className="text-[10px] text-slate-400 block">LIVE DBs</span>
+                        <span className="text-[10px] text-slate-400 block">{lang === "en" ? "LIVE DBs" : "DB AKTIF"}</span>
                         <span className="font-bold">{restorePreview.preview.currentDbCount}</span>
                       </div>
                       <div className="bg-white p-2.5 rounded border border-slate-200">
-                        <span className="text-[10px] text-slate-400 block">TO RESTORE</span>
+                        <span className="text-[10px] text-slate-400 block">{lang === "en" ? "TO RESTORE" : "AKAN DIPULIH"}</span>
                         <span className="font-bold text-emerald-700">+{restorePreview.preview.missingDbsToRestore}</span>
                       </div>
                       <div className="bg-white p-2.5 rounded border border-slate-200">
-                        <span className="text-[10px] text-slate-400 block">CHAT THREADS</span>
+                        <span className="text-[10px] text-slate-400 block">{lang === "en" ? "CHAT THREADS" : "UTAS SEMBANG"}</span>
                         <span className="font-bold">{restorePreview.preview.backupChatThreads}</span>
                       </div>
                       <div className="bg-white p-2.5 rounded border border-slate-200">
-                        <span className="text-[10px] text-slate-400 block">USERS SAFE</span>
+                        <span className="text-[10px] text-slate-400 block">{lang === "en" ? "USERS SAFE" : "PENGGUNA SELAMAT"}</span>
                         <span className="font-bold text-[#0b3c7a]">{restorePreview.preview.usersProtectedCount}</span>
                       </div>
                     </div>
@@ -2094,7 +2206,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                         className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-400 text-white rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap"
                       >
                         {actionBusy === "restore-exec"
-                          ? "Restoring..."
+                          ? (lang === "en" ? "Restoring..." : "Memulihkan...")
                           : (lang === "en" ? "Execute Safe Restore" : "Laksanakan Pemulihan Selamat")}
                       </button>
                     </div>
@@ -2103,25 +2215,27 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
 
                 {/* Recovery Audit Trail */}
                 <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <h5 className="text-xs font-bold text-slate-800 uppercase">Recovery Audit History</h5>
+                  <h5 className="text-xs font-bold text-slate-800 uppercase">
+                    {lang === "en" ? "Recovery Audit History" : "Sejarah Audit Pemulihan"}
+                  </h5>
                   {data.backups.recoveryLogs.length === 0 ? (
-                    <p className="text-xs text-slate-500">Tiada aktiviti pemulihan direkodkan lagi.</p>
+                    <p className="text-xs text-slate-500">{t.serverDb.noRecoveryActivity}</p>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
                       <table className="w-full text-left text-xs font-mono">
                         <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase">
                           <tr>
-                            <th className="py-2 px-3">Time</th>
-                            <th className="py-2 px-3">Backup</th>
-                            <th className="py-2 px-3">Pre-Restore Snap</th>
-                            <th className="py-2 px-3">Status</th>
-                            <th className="py-2 px-3">Details</th>
+                            <th className="py-2 px-3">{t.serverDb.timeCol}</th>
+                            <th className="py-2 px-3">{lang === "en" ? "Backup" : "Sandaran"}</th>
+                            <th className="py-2 px-3">{lang === "en" ? "Pre-Restore Snap" : "Snap Pra-Pulih"}</th>
+                            <th className="py-2 px-3">{lang === "en" ? "Status" : "Status"}</th>
+                            <th className="py-2 px-3">{lang === "en" ? "Details" : "Butiran"}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {data.backups.recoveryLogs.map((rl) => (
                             <tr key={rl.id}>
-                              <td className="py-2 px-3 whitespace-nowrap">{new Date(rl.timestamp).toLocaleString()}</td>
+                              <td className="py-2 px-3 whitespace-nowrap">{formatLocalizedDateTime(rl.timestamp, lang)}</td>
                               <td className="py-2 px-3">{rl.backupId}</td>
                               <td className="py-2 px-3">{rl.preRestoreBackupId}</td>
                               <td className="py-2 px-3 font-bold text-emerald-700">{rl.status}</td>
@@ -2175,8 +2289,8 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       <YAxis tick={{ fontSize: 11 }} />
                       <Tooltip />
                       <Legend />
-                      <Line type="monotone" dataKey="avgLatencyMs" name="Avg Response (ms)" stroke="#0b3c7a" strokeWidth={2} />
-                      <Line type="monotone" dataKey="errors" name="5xx Errors" stroke="#dc2626" strokeWidth={2} />
+                      <Line type="monotone" dataKey="avgLatencyMs" name={lang === "en" ? "Avg Response (ms)" : "Purata Respons (ms)"} stroke="#0b3c7a" strokeWidth={2} />
+                      <Line type="monotone" dataKey="errors" name={lang === "en" ? "5xx Errors" : "Ralat 5xx"} stroke="#dc2626" strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -2198,7 +2312,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                       type="text"
                       value={logSearch}
                       onChange={(e) => setLogSearch(e.target.value)}
-                      placeholder="Filter logs..."
+                      placeholder={lang === "en" ? "Filter logs..." : "Tapis log..."}
                       className="pl-8 pr-3 py-1 border border-slate-300 rounded-lg text-xs"
                     />
                   </div>
@@ -2207,7 +2321,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     onChange={(e) => setLogLevelFilter(e.target.value)}
                     className="px-2.5 py-1 border border-slate-300 rounded-lg text-xs font-mono bg-white"
                   >
-                    <option value="ALL">ALL</option>
+                    <option value="ALL">{lang === "en" ? "ALL" : "SEMUA"}</option>
                     <option value="INFO">INFO</option>
                     <option value="FAILOVER">FAILOVER</option>
                     <option value="BACKUP">BACKUP</option>
@@ -2228,24 +2342,24 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                 <table className="w-full text-left text-xs font-mono tabular-nums">
                   <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase">
                     <tr>
-                      <th className="py-2 px-3">Time</th>
-                      <th className="py-2 px-3">Level</th>
-                      <th className="py-2 px-3">Source</th>
-                      <th className="py-2 px-3">Message</th>
+                      <th className="py-2 px-3">{t.serverDb.timeCol}</th>
+                      <th className="py-2 px-3">{t.serverDb.levelCol}</th>
+                      <th className="py-2 px-3">{t.serverDb.sourceCol}</th>
+                      <th className="py-2 px-3">{t.serverDb.messageCol}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredLogs.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="py-6 text-center text-slate-400 font-sans">
-                          No log entries matching current filter.
+                          {lang === "en" ? "No log entries matching current filter." : "Tiada entri log sepadan dengan penapis semasa."}
                         </td>
                       </tr>
                     ) : (
                       filteredLogs.map((l) => (
                         <tr key={l.id} className="hover:bg-slate-50">
                           <td className="py-1.5 px-3 whitespace-nowrap text-slate-500">
-                            {new Date(l.timestamp).toLocaleTimeString()}
+                            {formatLocalizedTime(l.timestamp, lang)}
                           </td>
                           <td className="py-1.5 px-3">
                             <span
@@ -2301,20 +2415,20 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                 <>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono tabular-nums">
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block">AUDIT EVENTS</span>
+                      <span className="text-[10px] text-slate-500 block">{lang === "en" ? "AUDIT EVENTS" : "KEJADIAN AUDIT"}</span>
                       <span className="text-lg font-bold text-slate-900">{securityData.summary.totalEvents}</span>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block">LOGIN FAIL / LOCK</span>
+                      <span className="text-[10px] text-slate-500 block">{lang === "en" ? "LOGIN FAIL / LOCK" : "GAGAL / KUNCI LOG MASUK"}</span>
                       <span className="text-lg font-bold text-amber-700">{securityData.summary.failedLoginsAndLockouts}</span>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block">BLOCKED RBAC</span>
+                      <span className="text-[10px] text-slate-500 block">{lang === "en" ? "BLOCKED RBAC" : "SEKATAN RBAC"}</span>
                       <span className="text-lg font-bold text-rose-700">{securityData.summary.blockedUnauthorizedRequests}</span>
                     </div>
                     <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                      <span className="text-[10px] text-emerald-700 block">SECRETS EXPOSED</span>
-                      <span className="text-lg font-bold text-emerald-800">0 (PROTECTED)</span>
+                      <span className="text-[10px] text-emerald-700 block">{lang === "en" ? "SECRETS EXPOSED" : "RAHSIA TERDEDAH"}</span>
+                      <span className="text-lg font-bold text-emerald-800">{lang === "en" ? "0 (PROTECTED)" : "0 (DILINDUNGI)"}</span>
                     </div>
                   </div>
 
@@ -2322,23 +2436,23 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     <table className="w-full text-left text-xs font-mono tabular-nums">
                       <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase">
                         <tr>
-                          <th className="py-2 px-3">Time</th>
-                          <th className="py-2 px-3">Event</th>
-                          <th className="py-2 px-3">Role</th>
-                          <th className="py-2 px-3">Status</th>
-                          <th className="py-2 px-3">Detail</th>
+                          <th className="py-2 px-3">{t.serverDb.timeCol}</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Event" : "Kejadian"}</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Role" : "Peranan"}</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Status" : "Status"}</th>
+                          <th className="py-2 px-3">{lang === "en" ? "Detail" : "Butiran"}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {securityData.auditLogs.slice(0, 50).map((ev, idx) => (
                           <tr key={idx}>
                             <td className="py-1.5 px-3 whitespace-nowrap text-slate-500">
-                              {new Date(ev.masa).toLocaleString()}
+                              {formatLocalizedDateTime(ev.masa, lang)}
                             </td>
                             <td className="py-1.5 px-3 font-bold text-slate-800">{ev.jenisKejadian}</td>
                             <td className="py-1.5 px-3">{ev.role || "—"}</td>
                             <td className="py-1.5 px-3">
-                              <span className={ev.status === "BERJAYA" ? "text-emerald-700 font-bold" : "text-rose-700 font-bold"}>
+                              <span className={ev.status === "BERJAYA" || ev.status === "SUCCESS" ? "text-emerald-700 font-bold" : "text-rose-700 font-bold"}>
                                 {ev.status}
                               </span>
                             </td>
@@ -2370,9 +2484,9 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                 {/* Load Balancer Settings */}
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
-                  <div className="font-bold text-slate-900">Logical Pool Routing</div>
+                  <div className="font-bold text-slate-900">{lang === "en" ? "Logical Pool Routing" : "Penghalaan Kolam Logik"}</div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Algorithm</label>
+                    <label className="block text-slate-600 mb-1">{lang === "en" ? "Algorithm" : "Algoritma"}</label>
                     <select
                       value={cfgForm.loadBalancer.algorithm}
                       onChange={(e) =>
@@ -2390,7 +2504,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     </select>
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Health Check Interval (sec)</label>
+                    <label className="block text-slate-600 mb-1">{lang === "en" ? "Health Check Interval (sec)" : "Selang Semakan Kesihatan (saat)"}</label>
                     <input
                       type="number"
                       min={5}
@@ -2406,7 +2520,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Failover Threshold (fails)</label>
+                    <label className="block text-slate-600 mb-1">{lang === "en" ? "Failover Threshold (fails)" : "Ambang Failover (kegagalan)"}</label>
                     <input
                       type="number"
                       min={1}
@@ -2425,12 +2539,12 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
 
                 {/* Free Tier Quota Thresholds */}
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
-                  <div className="font-bold text-slate-900">Free Tier Quota Alerts (RM0.00)</div>
+                  <div className="font-bold text-slate-900">{lang === "en" ? "Free Tier Quota Alerts (RM0.00)" : "Amaran Kuota Percuma (RM0.00)"}</div>
                   <div className="p-2 rounded bg-emerald-50 border border-emerald-200 text-[11px] font-mono text-emerald-800">
-                    100%: <strong>FREE QUOTA EXCEEDED (Auto HTTP 429)</strong> • Min: <strong>0</strong>
+                    100%: <strong>{lang === "en" ? "FREE QUOTA EXCEEDED (Auto HTTP 429)" : "KUOTA MELEBIHI HAD (Auto HTTP 429)"}</strong> • Min: <strong>0</strong>
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Approaching Limit Alert (%)</label>
+                    <label className="block text-slate-600 mb-1">{lang === "en" ? "Approaching Limit Alert (%)" : "Amaran Hampir Had (%)"}</label>
                     <input
                       type="number"
                       min={50}
@@ -2449,7 +2563,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">High Usage Alert (%)</label>
+                    <label className="block text-slate-600 mb-1">{lang === "en" ? "High Usage Alert (%)" : "Amaran Penggunaan Tinggi (%)"}</label>
                     <input
                       type="number"
                       min={55}
@@ -2471,7 +2585,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
 
                 {/* Backup Policy (Free Local Only) */}
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
-                  <div className="font-bold text-slate-900">Zero-Cost Local Backup Policy</div>
+                  <div className="font-bold text-slate-900">{lang === "en" ? "Zero-Cost Local Backup Policy" : "Polisi Sandaran Tempatan Kos Sifar"}</div>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -2483,10 +2597,10 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                         })
                       }
                     />
-                    <span>Local Snapshot Schedule (No Paid Cloud)</span>
+                    <span>{lang === "en" ? "Local Snapshot Schedule (No Paid Cloud)" : "Jadual Snapshot Tempatan (Tiada Awan Berbayar)"}</span>
                   </label>
                   <div>
-                    <label className="block text-slate-600 mb-1">Schedule Interval (hours)</label>
+                    <label className="block text-slate-600 mb-1">{lang === "en" ? "Schedule Interval (hours)" : "Selang Jadual (jam)"}</label>
                     <input
                       type="number"
                       min={1}
@@ -2502,7 +2616,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Retention Count (Snapshots)</label>
+                    <label className="block text-slate-600 mb-1">{lang === "en" ? "Retention Count (Snapshots)" : "Bilangan Simpanan (Snapshot)"}</label>
                     <input
                       type="number"
                       min={3}
@@ -2527,7 +2641,7 @@ export default function ServerDatabaseManagement({ isRealDeveloperSuperuser, lan
                   className="px-4 py-2 bg-[#061830] hover:bg-[#0b3c7a] text-white rounded-lg text-xs font-semibold cursor-pointer"
                 >
                   {actionBusy === "save-config"
-                    ? "Saving..."
+                    ? t.serverDb.saving
                     : (lang === "en" ? "Save Zero-Cost Configuration" : "Simpan Konfigurasi Kos Sifar")}
                 </button>
               </div>

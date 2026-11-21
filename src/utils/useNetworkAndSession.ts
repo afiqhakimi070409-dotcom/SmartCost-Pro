@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { apiUrl } from "./apiBase";
+import { getStoredLanguage, tr } from "./i18n";
 
 export interface NetworkAndSessionState {
   isOffline: boolean;
@@ -29,7 +30,9 @@ export function useNetworkAndSession(
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
   const [isSlowNetwork, setIsSlowNetwork] = useState<boolean>(false);
   const [networkProgress, setNetworkProgress] = useState<number>(0);
-  const [slowOperationLabel, setSlowOperationLabel] = useState<string>("Memuatkan data...");
+  const [slowOperationLabel, setSlowOperationLabel] = useState<string>(() =>
+    tr(getStoredLanguage(), "uiStates.loadingDataLabel")
+  );
   const [isSessionExpired, setIsSessionExpired] = useState<boolean>(false);
 
   const lastActivityRef = useRef<number>(Date.now());
@@ -56,8 +59,8 @@ export function useNetworkAndSession(
   }, []);
 
   // 2. Slow Network Tracker Helper
-  const startSlowNetworkTracker = useCallback((label = "Menyegerakkan data...") => {
-    setSlowOperationLabel(label);
+  const startSlowNetworkTracker = useCallback((label?: string) => {
+    setSlowOperationLabel(label || tr(getStoredLanguage(), "uiStates.slowNetworkDefaultLabel"));
     setNetworkProgress(10);
 
     let progress = 10;

@@ -21,7 +21,7 @@ import {
   FileText,
   X
 } from "lucide-react";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import { Language, getTranslation, getStoredLanguage, formatLocalizedNumber, formatLocalizedDate, formatUnitLabel } from "../utils/i18n";
 
 interface BatchQuotationSheetProps {
   config: KonfigurasiSistem;
@@ -49,11 +49,11 @@ export default function BatchQuotationSheet({
   const lang: Language = systemLang || config.language || getStoredLanguage();
   const t = getTranslation(lang);
   const f = (val: number) => formatCurrencyRM(val, config.currency);
-  const fNum = (val: number) => val.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  const unitLabel = config.unitProduk || (lang === "en" ? "units" : "batang");
+  const fNum = (val: number) => formatLocalizedNumber(val, lang, { maximumFractionDigits: 0 });
+  const unitLabel = formatUnitLabel(config.unitProduk, lang);
 
   // Quotation form state
-  const [clientName, setClientName] = useState<string>("Corporate Client Sdn Bhd");
+  const [clientName, setClientName] = useState<string>(t.batchQuotation.defaultClient);
   const [orderQty, setOrderQty] = useState<number>(300);
   const [targetMarginPct, setTargetMarginPct] = useState<number>(40);
   const [deliveryFee, setDeliveryFee] = useState<number>(50);
@@ -146,11 +146,14 @@ export default function BatchQuotationSheet({
 
   // Copy Quotation to Clipboard
   const handleCopyQuotation = () => {
-    const quoteText = `================================================
+    const formattedDate = formatLocalizedDate(new Date(), lang);
+    const quoteText =
+      lang === "en"
+        ? `================================================
 OFFICIAL COMMERCIAL QUOTATION
 ${config.namaSyarikat || "SMARTCOST ENTERPRISE"}
 ================================================
-Date: ${new Date().toLocaleDateString()}
+Date: ${formattedDate}
 Client: ${clientName}
 Product: ${config.namaProduk}
 Quantity: ${validQty} ${unitLabel}
@@ -165,7 +168,27 @@ ${expeditedFee > 0 ? `- Rush Order Surcharge: ${f(expeditedFee)}\n` : ""}- GRAND
 TERMS & NOTES:
 ${quotationNotes}
 ================================================
-SmartCost ERP Commercial Accounting Engine`;
+SmartCost Commercial Accounting Engine`
+        : `================================================
+SEBUT HARGA RASMI KOMERSIAL
+${config.namaSyarikat || "SMARTCOST ENTERPRISE"}
+================================================
+Tarikh: ${formattedDate}
+Pelanggan: ${clientName}
+Produk: ${config.namaProduk}
+Kuantiti: ${validQty} ${unitLabel}
+
+PECAHAN HARGA:
+- Harga Seunit: ${f(recommendedUnitPrice)} / ${unitLabel} (Runcit: ${f(regularRetailPrice)})
+- Subjumlah Produk: ${f(subtotalProducts)}
+- Penghantaran / Logistik: ${f(deliveryFee)}
+- Pembungkusan Khas Acara: ${f(customPackagingFee)}
+${expeditedFee > 0 ? `- Caj Pesanan Segera: ${f(expeditedFee)}\n` : ""}- JUMLAH KESELURUHAN SEBUT HARGA: ${f(grandTotalQuote)}
+
+TERMA & NOTA:
+${quotationNotes}
+================================================
+Enjin Perakaunan Komersial SmartCost`;
 
     navigator.clipboard.writeText(quoteText);
     setCopied(true);
@@ -182,7 +205,7 @@ SmartCost ERP Commercial Accounting Engine`;
       unitPrice: recommendedUnitPrice,
       grandTotal: grandTotalQuote,
       marginPct: targetMarginPct,
-      date: new Date().toLocaleDateString(),
+      date: formatLocalizedDate(new Date(), lang),
       deliveryFee,
       packagingFee: customPackagingFee,
     };
@@ -214,7 +237,9 @@ SmartCost ERP Commercial Accounting Engine`;
 
   // Download Bill of Materials as CSV
   const handleDownloadBOM = () => {
-    const headers = "Ingredient,Required Quantity,Unit,Unit Price,Total Cost\n";
+    const headers = lang === "en"
+      ? "Ingredient,Required Quantity,Unit,Unit Price,Total Cost\n"
+      : "Bahan Mentah,Kuantiti Diperlukan,Unit,Harga Seunit,Jumlah Kos\n";
     const rows = batchBOM.map(b => `"${b.nama}",${b.requiredQty.toFixed(2)},"${b.unit}",${b.rate.toFixed(2)},${b.itemCost.toFixed(2)}`).join("\n");
     const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(headers + rows);
     const link = document.createElement("a");
@@ -365,7 +390,7 @@ SmartCost ERP Commercial Accounting Engine`;
                 <Building2 className="w-4 h-4 text-blue-600" />
                 <span>{lang === "en" ? "Client & Order Specifications" : "Spesifikasi Pelanggan & Pesanan"}</span>
               </h3>
-              <span className="text-[10px] font-mono text-slate-400 uppercase">Input Parameter</span>
+              <span className="text-[10px] font-mono text-slate-400 uppercase">{t.batchQuotation.inputParams}</span>
             </div>
 
             {/* Client / Event Name */}
@@ -378,7 +403,7 @@ SmartCost ERP Commercial Accounting Engine`;
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 onKeyDown={(e) => handleInputEnterKey(e)}
-                placeholder="Contoh: Majlis Korporat Sdn Bhd"
+                placeholder={t.batchQuotation.clientPlaceholder}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-600 rounded-lg text-xs font-medium text-slate-800 outline-hidden transition-all"
               />
             </div>
@@ -515,7 +540,11 @@ SmartCost ERP Commercial Accounting Engine`;
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2">
                 <Utensils className="w-3.5 h-3.5 text-blue-600" />
-                <span>Senarai Bahan (BOM) untuk {validQty} {unitLabel}</span>
+                <span>
+                  {lang === "en"
+                    ? `Bill of Materials (BOM) for ${validQty} ${unitLabel}`
+                    : `Senarai Bahan (BOM) untuk ${validQty} ${unitLabel}`}
+                </span>
               </h4>
               <span className="text-xs font-mono font-bold text-slate-700 tabular-nums">
                 {f(batchMaterialCost)}
@@ -549,20 +578,20 @@ SmartCost ERP Commercial Accounting Engine`;
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <span className="text-[10px] font-mono font-bold text-blue-700 tracking-wider uppercase block">
-                  SEBUT HARGA RASMI KOMERSIAL
+                  {t.batchQuotation.officialHeader}
                 </span>
                 <h3 className="text-lg font-display font-extrabold text-slate-900 uppercase tracking-tight mt-0.5">
                   {config.namaSyarikat || "SMARTCOST ENTERPRISE"}
                 </h3>
                 <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                  Ref: QT-{Date.now().toString().slice(-6)} · Tarikh: {new Date().toLocaleDateString()}
+                  {t.batchQuotation.refLabel} QT-{Date.now().toString().slice(-6)} · {t.batchQuotation.dateLabel} {formatLocalizedDate(new Date(), lang)}
                 </p>
               </div>
 
               <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 sm:text-right shrink-0">
-                <span className="text-[10px] font-mono text-slate-400 block uppercase">Penerima Pesanan</span>
+                <span className="text-[10px] font-mono text-slate-400 block uppercase">{t.batchQuotation.recipientLabel}</span>
                 <span className="font-bold text-xs text-slate-900 block truncate max-w-[200px]">
-                  {clientName || "Pelanggan Korporat"}
+                  {clientName || t.batchQuotation.defaultClient}
                 </span>
               </div>
             </div>
@@ -572,10 +601,10 @@ SmartCost ERP Commercial Accounting Engine`;
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-[10px] font-mono text-slate-500 uppercase bg-slate-50/60">
-                    <th className="py-2 px-3">Item / Butiran</th>
-                    <th className="py-2 px-3 text-center">Kuantiti</th>
-                    <th className="py-2 px-3 text-right">Harga Seunit</th>
-                    <th className="py-2 px-3 text-right">Jumlah ({config.currency})</th>
+                    <th className="py-2 px-3">{t.batchQuotation.itemCol}</th>
+                    <th className="py-2 px-3 text-center">{t.batchQuotation.qtyCol}</th>
+                    <th className="py-2 px-3 text-right">{t.batchQuotation.unitPriceCol}</th>
+                    <th className="py-2 px-3 text-right">{t.batchQuotation.totalCol} ({config.currency})</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
@@ -583,7 +612,7 @@ SmartCost ERP Commercial Accounting Engine`;
                     <td className="py-2.5 px-3 font-sans">
                       <div className="font-bold text-slate-900 text-xs">{config.namaProduk}</div>
                       <div className="text-[10px] text-slate-400 font-sans mt-0.5">
-                        Pesanan pukal dengan kawalan kualiti & pematuhan standard.
+                        {t.batchQuotation.quoteNote}
                       </div>
                     </td>
                     <td className="py-2.5 px-3 text-center text-slate-700 font-bold tabular-nums">
@@ -603,7 +632,7 @@ SmartCost ERP Commercial Accounting Engine`;
                         {lang === "en" ? "Logistics & Delivery Surcharge" : "Caj Logistik & Penghantaran"}
                       </td>
                       <td className="py-2 px-3 text-center text-slate-500">
-                        {lang === "en" ? "1 Trip" : "1 Trip"}
+                        {t.batchQuotation.oneTrip}
                       </td>
                       <td className="py-2 px-3 text-right text-slate-600 tabular-nums">{f(deliveryFee)}</td>
                       <td className="py-2 px-3 text-right font-bold text-slate-800 tabular-nums">{f(deliveryFee)}</td>
@@ -678,7 +707,7 @@ SmartCost ERP Commercial Accounting Engine`;
                 </span>
               </h4>
               <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-mono font-bold text-xs">
-                Margin: {effectiveMarginPct.toFixed(1)}%
+                {t.batchQuotation.marginLabel} {effectiveMarginPct.toFixed(1)}%
               </span>
             </div>
 

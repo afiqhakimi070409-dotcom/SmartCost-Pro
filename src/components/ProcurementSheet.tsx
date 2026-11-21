@@ -5,6 +5,7 @@
 
 import React, { useState } from "react";
 import { BahanMentah, KonfigurasiSistem, Language } from "../types";
+import { getTranslation, formatLocalizedNumber, formatUnitLabel } from "../utils/i18n";
 import { 
   Truck, 
   Check, 
@@ -37,8 +38,9 @@ export const ProcurementSheet: React.FC<ProcurementSheetProps> = ({
   systemLang = "en",
 }) => {
   const isEn = systemLang === "en";
+  const t = getTranslation(systemLang);
   const currency = config.currency || "RM";
-  const f = (val: number) => `${currency} ${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const f = (val: number) => `${currency} ${formatLocalizedNumber(val, systemLang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // Active selected material to benchmark
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>(
@@ -168,7 +170,7 @@ export const ProcurementSheet: React.FC<ProcurementSheetProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider">
             <Truck className="w-3.5 h-3.5 text-blue-600" />
-            <span>Strategi Perolehan & Penanda Aras Harga Pembekal</span>
+            <span>{t.procurement.title}</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-900 tracking-tight">
             {isEn ? "Supplier Quotation & Cost Benchmark" : "Perbandingan Sebut Harga Pembekal & Penjimatan"}
@@ -201,7 +203,7 @@ export const ProcurementSheet: React.FC<ProcurementSheetProps> = ({
             <div className="text-base font-bold text-slate-900 flex items-center gap-2">
               <span>{selectedMaterial?.nama || (isEn ? "Raw Material" : "Bahan Mentah")}</span>
               <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 font-mono text-slate-600 font-semibold">
-                {selectedMaterial?.unit || "unit"}
+                {formatUnitLabel(selectedMaterial?.unit, systemLang)}
               </span>
             </div>
           </div>
@@ -321,7 +323,7 @@ export const ProcurementSheet: React.FC<ProcurementSheetProps> = ({
               <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-mono font-bold uppercase">
                 {isEn ? "Option B (Wholesaler)" : "Pilihan B (Pemborong)"}
               </span>
-              <span className="text-[10px] font-mono font-bold text-blue-600 uppercase">Disyorkan</span>
+              <span className="text-[10px] font-mono font-bold text-blue-600 uppercase">{t.procurement.recommended}</span>
             </div>
 
             <div>
@@ -417,7 +419,7 @@ export const ProcurementSheet: React.FC<ProcurementSheetProps> = ({
               <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-mono font-bold uppercase">
                 {isEn ? "Option C (Factory Direct)" : "Pilihan C (Kilang Terus)"}
               </span>
-              <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase">Maksimum</span>
+              <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase">{t.procurement.maximum}</span>
             </div>
 
             <div>

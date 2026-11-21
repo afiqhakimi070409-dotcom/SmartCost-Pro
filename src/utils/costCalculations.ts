@@ -5,6 +5,7 @@
 
 import { BahanMentah, BuruhLangsung, OverheadBerubah, OverheadTetap, KonfigurasiSistem } from "../types";
 import { convertUnit, normalizeUnit, areUnitsCompatible } from "./mrcostEngine";
+import { tr, getStoredLanguage, type Language } from "./i18n";
 
 // Re-export unit intelligence utilities
 export { convertUnit, normalizeUnit, areUnitsCompatible };
@@ -173,7 +174,7 @@ export function kiraRingkasanKosStandard(
 ): RingkasanKos {
   // Kuantiti kelompok pengeluaran piawai (cth: 20 bekas)
   const batchQty = Math.max(1, safeNum(config.kuantitiPengeluaranPiawai || 1));
-  const batchUnit = config.unitPengeluaran || config.unitProduk || "bekas";
+  const batchUnit = config.unitPengeluaran || config.unitProduk || "units";
   const Q = Math.max(0, safeNum(config.sasaranKuantitiStandard));
 
   // 1. Kos Bahan Mentah Kelompok Piawai = sum(calculateMaterialCost)
@@ -308,7 +309,7 @@ export function kiraRingkasanKosSebenar(
   overheadTetap: OverheadTetap[]
 ): RingkasanKos {
   const batchQty = Math.max(1, safeNum(config.kuantitiPengeluaranSebenar || config.kuantitiPengeluaranPiawai || 1));
-  const batchUnit = config.unitPengeluaran || config.unitProduk || "bekas";
+  const batchUnit = config.unitPengeluaran || config.unitProduk || "units";
   const Q = Math.max(0, safeNum(config.kuantitiSebenarDijual));
 
   // 1. Kos Bahan Mentah Sebenar = Kuantiti bahan sebenar × Harga sebenar bagi kelompok
@@ -622,8 +623,10 @@ export function kiraAnalisisBEP(
   fixedCosts: number,
   sellingPrice: number,
   variableCostPerUnit: number,
-  salesQuantity: number
+  salesQuantity: number,
+  lang?: Language
 ): AnalisisBEP {
+  const effectiveLang: Language = lang || getStoredLanguage();
   const safeFixed = Math.max(0, safeNum(fixedCosts));
   const safePrice = Math.max(0, safeNum(sellingPrice));
   const safeVarCost = Math.max(0, safeNum(variableCostPerUnit));
@@ -632,7 +635,6 @@ export function kiraAnalisisBEP(
   const marginCarumanMangkuk = safePrice - safeVarCost;
   const nisbahMarginCaruman = safePrice > 0 ? marginCarumanMangkuk / safePrice : 0;
   
-  // Titik pulang modal hanya wujud dan dapat dicapai jika margin caruman seunit adalah positif (> 0.0001)
   const isAttainable = marginCarumanMangkuk > 0.0001;
 
   let bepMangkuk = 0;
@@ -640,7 +642,7 @@ export function kiraAnalisisBEP(
   let marginKeselamatanUnit = 0;
   let marginKeselamatanPeratus = 0;
   let status: "attainable" | "zero_margin" | "negative_margin" = "attainable";
-  let statusMessage = "Titik Pulang Modal dapat dicapai dengan volum jualan yang diunjurkan.";
+  let statusMessage = tr(effectiveLang, "bep.attainable");
 
   if (isAttainable) {
     bepMangkuk = safeFixed / marginCarumanMangkuk;
@@ -649,10 +651,10 @@ export function kiraAnalisisBEP(
     marginKeselamatanPeratus = safeSalesQty > 0 ? (marginKeselamatanUnit / safeSalesQty) * 100 : 0;
   } else if (Math.abs(marginCarumanMangkuk) <= 0.0001) {
     status = "zero_margin";
-    statusMessage = "Margin caruman sifar: Harga jualan sama dengan kos berubah. Perniagaan tidak berupaya menampung sebarang kos tetap.";
+    statusMessage = tr(effectiveLang, "bep.zeroMargin");
   } else {
     status = "negative_margin";
-    statusMessage = "Margin caruman negatif: Harga jualan lebih rendah daripada kos berubah. Setiap jualan menghasilkan kerugian, maka Titik Pulang Modal mustahil dicapai.";
+    statusMessage = tr(effectiveLang, "bep.negativeMargin");
   }
 
   return {

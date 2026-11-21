@@ -33,7 +33,15 @@ import {
   Sliders,
   X
 } from "lucide-react";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import {
+  Language,
+  getTranslation,
+  getStoredLanguage,
+  formatLocalizedNumber,
+  formatLocalizedDate,
+  formatUnitLabel,
+  getLocalizedRoleDef,
+} from "../utils/i18n";
 import { handleInputEnterKey } from "../utils/inputNavigation";
 import { formatCurrencyRM, kiraRingkasanKosStandard, kiraRingkasanKosSebenar, calculateMaterialCost, calculateLaborCost } from "../utils/costCalculations";
 import ScenarioSimulatorSheet from "./ScenarioSimulatorSheet";
@@ -123,12 +131,12 @@ export default function StandardSheet({
   const lang: Language = systemLang || config.language || getStoredLanguage();
   const t = getTranslation(lang);
   const f = (val: number) => formatCurrencyRM(val, config.currency);
-  const unitLabel = config.unitProduk || (lang === "en" ? "units" : "batang");
+  const unitLabel = formatUnitLabel(config.unitProduk, lang);
   const presetsBahan = lang === "en" ? presetsBahanEn : presetsBahanMs;
   const presetsBuruh = lang === "en" ? presetsBuruhEn : presetsBuruhMs;
   const presetsOHB = lang === "en" ? presetsOHBEn : presetsOHBMs;
   const presetsOHT = lang === "en" ? presetsOHTEn : presetsOHTMs;
-  const roleDef = ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin;
+  const roleDef = getLocalizedRoleDef(userRole, ROLE_DEFINITIONS[userRole] || ROLE_DEFINITIONS.admin, lang);
   const isReadOnly = readOnly || !roleDef.canEditDailyData;
   const [approvedStatus, setApprovedStatus] = useState<boolean>(false);
   const [activeToolModal, setActiveToolModal] = useState<"none" | "quotation" | "simulator">("none");
@@ -251,7 +259,7 @@ export default function StandardSheet({
 
   // Batch & Production settings
   const batchQty = Math.max(1, config.kuantitiPengeluaranPiawai || 1);
-  const batchUnit = config.unitPengeluaran || config.unitProduk || (lang === "en" ? "units" : "bekas");
+  const batchUnit = formatUnitLabel(config.unitPengeluaran || config.unitProduk, lang);
   const salesUnit = config.unitJualan || `1 ${batchUnit}`;
 
   // Totals calculations for the batch
@@ -292,25 +300,28 @@ export default function StandardSheet({
   const totalBatchLaborHours = buruhLangsung.reduce((sum, item) => sum + (item.stdJamPerUnit * validBatchYield), 0);
 
   const handleCopyKitchenPrepSheet = () => {
+    const isEn = lang === "en";
+    const companyTitle = config.namaSyarikat || t.app.defaultCompany;
+    const formattedDate = formatLocalizedDate(new Date(), lang);
     const lines = [
       `========================================`,
-      `SENARAI PREP DAPUR & SUKATAN RESIPI`,
-      `${config.namaSyarikat || "SMARTCOST"} - ${config.namaProduk}`,
-      `Saiz Kumpulan: ${validBatchYield} ${unitLabel}`,
-      `Tarikh: ${new Date().toLocaleDateString()}`,
+      t.standardSheet.kitchenPrepHeader,
+      `${companyTitle} - ${config.namaProduk}`,
+      `${isEn ? "Batch Size" : "Saiz Kumpulan"}: ${formatLocalizedNumber(validBatchYield, lang)} ${unitLabel}`,
+      `${t.standardSheet.kitchenPrepDate}: ${formattedDate}`,
       `========================================`,
-      `BAHAN MENTAH DIPERLUKAN:`,
+      `${t.standardSheet.kitchenPrepIngredients}:`,
       ...bahanMentah.map((item, idx) => {
         const qty = item.stdKuantitiPerUnit * validBatchYield;
         const cost = calculateMaterialCost(qty, item.unit, item.stdHargaPerUnit, item.hargaUnit);
         return `${idx + 1}. ${item.nama}: ${qty.toFixed(qty < 1 ? 3 : 2)} ${item.unit} (${f(cost)})`;
       }),
       `----------------------------------------`,
-      `JUMLAH KOS BAHAN: ${f(batchMatCost)}`,
-      `ANGGARAN MASA BURUH: ${totalBatchLaborHours.toFixed(1)} Jam (${f(batchLabCost)})`,
-      `JUMLAH KOS BERUBAH: ${f(batchTotalVarCost)}`,
-      `NILAI JUALAN BATCH: ${f(batchRetailRevenue)}`,
-      `ANGGARAN UNTUNG KASAR: ${f(batchGrossProfit)} (${batchProfitMargin.toFixed(1)}%)`,
+      `${t.standardSheet.kitchenPrepTotalCost.toUpperCase()}: ${f(batchMatCost)}`,
+      `${isEn ? "ESTIMATED LABOR TIME" : "ANGGARAN MASA BURUH"}: ${totalBatchLaborHours.toFixed(1)} ${t.common.hours} (${f(batchLabCost)})`,
+      `${isEn ? "TOTAL VARIABLE COST" : "JUMLAH KOS BERUBAH"}: ${f(batchTotalVarCost)}`,
+      `${isEn ? "BATCH SALES VALUE" : "NILAI JUALAN KELOMPOK"}: ${f(batchRetailRevenue)}`,
+      `${isEn ? "ESTIMATED GROSS PROFIT" : "ANGGARAN UNTUNG KASAR"}: ${f(batchGrossProfit)} (${batchProfitMargin.toFixed(1)}%)`,
       `========================================`,
     ];
     navigator.clipboard.writeText(lines.join("\n"));
@@ -338,7 +349,7 @@ export default function StandardSheet({
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               {approvedStatus 
-                ? (lang === "en" ? "Data Approved" : "Data Disahkan (Approved)") 
+                ? (lang === "en" ? "Data Approved" : "Data Disahkan") 
                 : (lang === "en" ? "Review & Verify Staff Data" : "Sahkan & Semak Data Staf")}
             </button>
           )}
@@ -358,7 +369,7 @@ export default function StandardSheet({
               </span>
               <span className="text-slate-300">·</span>
               <span className="text-xs font-bold text-slate-700">
-                {config.namaSyarikat || "SCHOOL ENTERPRISE"}
+                {config.namaSyarikat || t.app.defaultCompany}
               </span>
             </div>
             <h2 className="screen-title text-slate-900 tracking-tight flex items-center gap-2.5">
@@ -367,8 +378,8 @@ export default function StandardSheet({
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-3xl">
               {lang === "en"
-                ? `Standard budgeted costs based on standard recipe and weekly production target (${config.sasaranKuantitiStandard.toLocaleString()} ${unitLabel}) for ${config.namaProduk}.`
-                : `Kos piawai yang dianggarkan berdasarkan resipi standard dan sasaran jualan/pengeluaran mingguan (${config.sasaranKuantitiStandard.toLocaleString()} ${unitLabel}) untuk ${config.namaProduk}.`}
+                ? `Standard budgeted costs based on standard recipe and weekly production target (${formatLocalizedNumber(config.sasaranKuantitiStandard, lang)} ${unitLabel}) for ${config.namaProduk}.`
+                : `Kos piawai yang dianggarkan berdasarkan resipi standard dan sasaran jualan/pengeluaran mingguan (${formatLocalizedNumber(config.sasaranKuantitiStandard, lang)} ${unitLabel}) untuk ${config.namaProduk}.`}
             </p>
           </div>
 
@@ -386,7 +397,7 @@ export default function StandardSheet({
               </span>
             </div>
             <div className="flex items-center gap-3 text-xs text-slate-600 font-mono pt-1 border-t border-slate-200/60">
-              <span>{lang === "en" ? "Target:" : "Sasaran:"} <strong className="text-slate-900">{config.sasaranKuantitiStandard.toLocaleString()}</strong> {unitLabel}</span>
+              <span>{lang === "en" ? "Target:" : "Sasaran:"} <strong className="text-slate-900">{formatLocalizedNumber(config.sasaranKuantitiStandard, lang)}</strong> {unitLabel}</span>
               <span className="text-slate-300">|</span>
               <span>{lang === "en" ? "Price:" : "Harga:"} <strong className="text-emerald-700">{f(hargaJualan)}</strong></span>
             </div>
@@ -729,7 +740,7 @@ export default function StandardSheet({
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
-                        <span>Porsi: {item.stdKuantitiPerUnit} {item.unit}</span>
+                        <span>{t.standardSheet.portionsLabel} {item.stdKuantitiPerUnit} {item.unit}</span>
                         <span className="font-bold text-slate-900 dark:text-slate-100 tabular-nums">{f(itemCost)}</span>
                       </div>
                     </div>
@@ -1000,7 +1011,7 @@ export default function StandardSheet({
                   value={item.nama}
                   onChange={(e) => updateBahan(index, "nama", e.target.value)}
                   className="flex-1 font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-blue-500 text-[16px] py-1 outline-hidden"
-                  placeholder="Nama Bahan Mentah"
+                  placeholder={t.standardSheet.matName}
                 />
                 <button
                   type="button"
@@ -1014,7 +1025,7 @@ export default function StandardSheet({
 
               <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">Unit</label>
+                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">{t.common.unit}</label>
                   <input
                     type="text"
                     value={item.unit}
@@ -1023,7 +1034,7 @@ export default function StandardSheet({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">Kuantiti</label>
+                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">{t.common.quantity}</label>
                   <input
                     type="number"
                     step="any"
@@ -1034,7 +1045,7 @@ export default function StandardSheet({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">Harga ({config.currency})</label>
+                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">{t.common.price} ({config.currency})</label>
                   <input
                     type="number"
                     step="any"
@@ -1047,7 +1058,7 @@ export default function StandardSheet({
               </div>
 
               <div className="flex items-center justify-between pt-2.5 border-t border-slate-200/60 dark:border-slate-800">
-                <span className="text-xs text-slate-500 font-medium">Kos Seunit</span>
+                <span className="text-xs text-slate-500 font-medium">{t.standardSheet.unitCostLabel}</span>
                 <span className="font-mono font-bold text-slate-900 dark:text-slate-100 tabular-nums text-sm whitespace-nowrap">
                   {f(calculateMaterialCost(item.stdKuantitiPerUnit, item.unit, item.stdHargaPerUnit, item.hargaUnit))}
                 </span>
@@ -1062,7 +1073,7 @@ export default function StandardSheet({
             </span>
 
             <div>
-              <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Nama Bahan</label>
+              <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.matName}</label>
               <input
                 type="text"
                 placeholder={lang === "en" ? "e.g. Flour / Chicken" : "Contoh: Kulit Popia / Ayam"}
@@ -1094,7 +1105,7 @@ export default function StandardSheet({
 
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Unit</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.common.unit}</label>
                 <input
                   type="text"
                   placeholder="kg"
@@ -1104,7 +1115,7 @@ export default function StandardSheet({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kuantiti</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.common.quantity}</label>
                 <input
                   type="number"
                   step="any"
@@ -1116,7 +1127,7 @@ export default function StandardSheet({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Harga (RM)</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.common.price} ({config.currency || "RM"})</label>
                 <input
                   type="number"
                   step="any"
@@ -1369,7 +1380,7 @@ export default function StandardSheet({
                     value={item.nama}
                     onChange={(e) => updateBuruh(index, "nama", e.target.value)}
                     className="flex-1 font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-blue-500 text-[16px] py-1 outline-hidden"
-                    placeholder="Tugasan Buruh"
+                    placeholder={t.standardSheet.laborTask}
                   />
                   <button
                     type="button"
@@ -1383,7 +1394,7 @@ export default function StandardSheet({
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">Jam / Unit (Jam)</label>
+                    <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">{t.standardSheet.laborHours}</label>
                     <input
                       type="number"
                       step="any"
@@ -1394,7 +1405,7 @@ export default function StandardSheet({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">Kadar / Jam ({config.currency})</label>
+                    <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">{t.standardSheet.hourlyRateLabel} ({config.currency})</label>
                     <input
                       type="number"
                       step="any"
@@ -1407,7 +1418,7 @@ export default function StandardSheet({
                 </div>
 
                 <div className="flex items-center justify-between pt-2.5 border-t border-slate-200/60 dark:border-slate-800">
-                  <span className="text-xs text-slate-500 font-medium">Kos Buruh Seunit</span>
+                  <span className="text-xs text-slate-500 font-medium">{t.standardSheet.laborTotal}</span>
                   <span className="font-mono font-bold text-slate-900 dark:text-slate-100 tabular-nums text-sm whitespace-nowrap">
                     {f(calculateLaborCost(item.stdJamPerUnit, item.unitMasa || "jam", item.stdKadarPerJam))}
                   </span>
@@ -1422,7 +1433,7 @@ export default function StandardSheet({
               </span>
 
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Nama Tugasan</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.laborTask}</label>
                 <input
                   type="text"
                   placeholder={lang === "en" ? "e.g. Prep & Rolling" : "Contoh: Menggulung Popia / Memasak"}
@@ -1453,7 +1464,7 @@ export default function StandardSheet({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Jam / Unit</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.laborHours}</label>
                   <input
                     type="number"
                     step="any"
@@ -1465,7 +1476,7 @@ export default function StandardSheet({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kadar / Jam (RM)</label>
+                  <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.hourlyRateLabel} ({config.currency || "RM"})</label>
                   <input
                     type="number"
                     step="any"
@@ -1614,7 +1625,7 @@ export default function StandardSheet({
                     value={item.nama}
                     onChange={(e) => updateOHB(index, "nama", e.target.value)}
                     className="flex-1 font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-blue-500 text-[16px] py-1 outline-hidden"
-                    placeholder="Nama Overhead Berubah"
+                    placeholder={t.standardSheet.varOhItem}
                   />
                   <button
                     type="button"
@@ -1627,7 +1638,7 @@ export default function StandardSheet({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">Kadar Kos Seunit ({config.currency})</label>
+                  <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">{t.standardSheet.varOhRate} ({config.currency})</label>
                   <input
                     type="number"
                     step="any"
@@ -1647,7 +1658,7 @@ export default function StandardSheet({
               </span>
 
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Nama Overhead</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.varOhItem}</label>
                 <input
                   type="text"
                   placeholder={lang === "en" ? "e.g. Cutlery / Packaging" : "Contoh: Pembungkusan / Gas"}
@@ -1676,7 +1687,7 @@ export default function StandardSheet({
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kadar Seunit (RM)</label>
+                <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.varOhRate} ({config.currency || "RM"})</label>
                 <input
                   type="number"
                   step="any"
@@ -1826,7 +1837,7 @@ export default function StandardSheet({
                   value={item.nama}
                   onChange={(e) => updateOHT(index, "nama", e.target.value)}
                   className="flex-1 font-semibold text-slate-900 dark:text-slate-100 bg-transparent border-b border-transparent focus:border-blue-500 text-[16px] py-1 outline-hidden"
-                  placeholder="Nama Kos Tetap"
+                  placeholder={t.standardSheet.fixedOhItem}
                 />
                 <button
                   type="button"
@@ -1839,7 +1850,7 @@ export default function StandardSheet({
               </div>
 
               <div>
-                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">Kos Mingguan ({config.currency})</label>
+                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block mb-1 text-left">{t.standardSheet.weeklyCostLabel} ({config.currency})</label>
                 <input
                   type="number"
                   step="any"
@@ -1859,7 +1870,7 @@ export default function StandardSheet({
             </span>
 
             <div>
-              <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Nama Kos Tetap</label>
+              <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.fixedOhItem}</label>
               <input
                 type="text"
                 placeholder={lang === "en" ? "e.g. Premises Rent / Permit" : "Contoh: Sewa Tapak / Lesen"}
@@ -1888,7 +1899,7 @@ export default function StandardSheet({
             </div>
 
             <div>
-              <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">Kos Mingguan (RM)</label>
+              <label className="text-[10px] font-mono text-slate-500 font-bold uppercase block mb-1 text-left">{t.standardSheet.weeklyCostLabel} ({config.currency || "RM"})</label>
               <input
                 type="number"
                 step="any"
@@ -1925,8 +1936,8 @@ export default function StandardSheet({
               </h4>
               <p className="text-xs text-slate-500">
                 {lang === "en"
-                  ? `Standard breakdown for ${config.namaProduk} (${config.sasaranKuantitiStandard.toLocaleString()} ${unitLabel}/week)`
-                  : `Pecahan piawai untuk ${config.namaProduk} (${config.sasaranKuantitiStandard.toLocaleString()} ${unitLabel}/minggu)`}
+                  ? `Standard breakdown for ${config.namaProduk} (${formatLocalizedNumber(config.sasaranKuantitiStandard, lang)} ${unitLabel}/week)`
+                  : `Pecahan piawai untuk ${config.namaProduk} (${formatLocalizedNumber(config.sasaranKuantitiStandard, lang)} ${unitLabel}/minggu)`}
               </p>
             </div>
           </div>
@@ -1947,7 +1958,7 @@ export default function StandardSheet({
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1">
             <span className="text-slate-500 text-[10px] font-bold uppercase block">{lang === "en" ? "Fixed Cost Burden per Unit" : "Beban Kos Tetap Seunit"}</span>
             <div className="text-slate-800 text-xs font-semibold">
-              {f(totalOHT)} ÷ {config.sasaranKuantitiStandard.toLocaleString()} = <strong className="text-slate-900">{f(kosTetapSeunit)}</strong>
+              {f(totalOHT)} ÷ {formatLocalizedNumber(config.sasaranKuantitiStandard, lang)} = <strong className="text-slate-900">{f(kosTetapSeunit)}</strong>
             </div>
             <span className="text-slate-400 text-[10px] block font-sans">{lang === "en" ? "Weekly Fixed Overhead ÷ Target Units" : "Kos Tetap Mingguan ÷ Sasaran Pengeluaran"}</span>
           </div>

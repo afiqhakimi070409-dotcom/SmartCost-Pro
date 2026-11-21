@@ -12,7 +12,7 @@ import {
   analisisVariansOverheadTetap 
 } from "../utils/costCalculations";
 import { CheckCircle2, AlertOctagon, HelpCircle, Flame, ShieldAlert, BadgeCheck, Lightbulb, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Layers, Clock } from "lucide-react";
-import { Language, getTranslation, getStoredLanguage } from "../utils/i18n";
+import { Language, getTranslation, getStoredLanguage, formatUnitLabel } from "../utils/i18n";
 import { 
   FINANCIAL_COLORS, 
   formatCurrencyRM, 
@@ -44,7 +44,7 @@ export default function VarianceSheet({
     if (val > 0) return `+${formatCurrencyRM(val, config.currency || "RM")}`;
     return formatCurrencyRM(val, config.currency || "RM");
   };
-  const unitLabel = config.unitProduk || (lang === "en" ? "units" : "batang");
+  const unitLabel = formatUnitLabel(config.unitProduk, lang);
 
   const Q_act = config.kuantitiSebenarDijual;
 
@@ -183,7 +183,7 @@ export default function VarianceSheet({
         {/* DMV Card */}
         <div className="p-5 bg-white dark:bg-[#132238] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Direct Materials (DMV)</span>
+            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.variance.directMaterialsTitle}</span>
             <Layers className="w-4 h-4 text-blue-600" />
           </div>
           <div 
@@ -203,7 +203,7 @@ export default function VarianceSheet({
         {/* DLV Card */}
         <div className="p-5 bg-white dark:bg-[#132238] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Direct Labor (DLV)</span>
+            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.variance.directLaborTitle}</span>
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div 
@@ -223,7 +223,7 @@ export default function VarianceSheet({
         {/* Variable Overhead Card */}
         <div className="p-5 bg-white dark:bg-[#132238] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Variable Overhead</span>
+            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.variance.variableOverheadTitle}</span>
             <Flame className="w-4 h-4 text-emerald-600" />
           </div>
           <div 
@@ -235,14 +235,14 @@ export default function VarianceSheet({
             {fDiff(totalVOHV)}
           </div>
           <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono pt-2 border-t border-slate-100 dark:border-slate-800">
-            Spending & Utility Variations
+            {t.variance.variableOverheadSub}
           </div>
         </div>
 
         {/* Fixed Overhead Card */}
         <div className="p-5 bg-white dark:bg-[#132238] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Fixed Overhead</span>
+            <span className="font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.variance.fixedOverheadTitle}</span>
             <ShieldAlert className="w-4 h-4 text-sky-600" />
           </div>
           <div 
@@ -254,7 +254,7 @@ export default function VarianceSheet({
             {fDiff(totalFOHV)}
           </div>
           <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono pt-2 border-t border-slate-100 dark:border-slate-800">
-            Rent & Fixed Budget Deviations
+            {t.variance.fixedOverheadSub}
           </div>
         </div>
 
@@ -410,7 +410,7 @@ export default function VarianceSheet({
                   <td className="py-4 px-6 font-medium text-slate-800 dark:text-slate-200">
                     <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">{item.nama}</div>
                     <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
-                      Std: {item.stdKuantitiPerUnit}{item.unit} · Act: {item.sebenarKuantitiJumlah}{item.unit} · Std Rate: {config.currency}{item.stdHargaPerUnit} · Act Rate: {config.currency}{item.sebenarHargaPerUnit}
+                      {t.actualSheet.stdLabel} {item.stdKuantitiPerUnit}{item.unit} · {lang === "en" ? "Act:" : "Sebenar:"} {item.sebenarKuantitiJumlah}{item.unit} · {t.variance.stdRate} {config.currency}{item.stdHargaPerUnit} · {t.variance.actRate} {config.currency}{item.sebenarHargaPerUnit}
                     </div>
                   </td>
                   <td className="py-4 px-4 text-center font-mono">
@@ -447,19 +447,19 @@ export default function VarianceSheet({
               </div>
               
               <div className="text-[11px] text-slate-500 font-mono space-y-0.5">
-                <div>Std: {item.stdKuantitiPerUnit} {item.unit} · {config.currency}{item.stdHargaPerUnit}/{item.unit}</div>
-                <div>Act: {item.sebenarKuantitiJumlah} {item.unit} · {config.currency}{item.sebenarHargaPerUnit}/{item.unit}</div>
+                <div>{t.actualSheet.stdLabel} {item.stdKuantitiPerUnit} {item.unit} · {config.currency}{item.stdHargaPerUnit}/{item.unit}</div>
+                <div>{lang === "en" ? "Act:" : "Sebenar:"} {item.sebenarKuantitiJumlah} {item.unit} · {config.currency}{item.sebenarHargaPerUnit}/{item.unit}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t border-slate-200/60 dark:border-slate-800">
                 <div className="p-2.5 bg-white dark:bg-[#132238] rounded-xl border border-slate-100 dark:border-slate-700/60">
-                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">MPV (Harga)</span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">{t.variance.mpvLabel}</span>
                   <span className={`text-xs font-mono font-bold tabular-nums whitespace-nowrap ${item.variansHarga > 0 ? "text-rose-600" : "text-emerald-600"}`}>
                     {fDiff(item.variansHarga)}
                   </span>
                 </div>
                 <div className="p-2.5 bg-white dark:bg-[#132238] rounded-xl border border-slate-100 dark:border-slate-700/60">
-                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">MQV (Kuantiti)</span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">{t.variance.mqvLabel}</span>
                   <span className={`text-xs font-mono font-bold tabular-nums whitespace-nowrap ${item.variansPenggunaan > 0 ? "text-rose-600" : "text-emerald-600"}`}>
                     {fDiff(item.variansPenggunaan)}
                   </span>
@@ -513,7 +513,7 @@ export default function VarianceSheet({
                   <td className="py-4 px-6 font-medium text-slate-800 dark:text-slate-200">
                     <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">{item.nama}</div>
                     <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
-                      Std Hrs: {item.stdJamPerUnit} · Act Hrs: {item.sebenarJamJumlah} · Std Rate: {config.currency}{item.stdKadarPerJam}/hr · Act Rate: {config.currency}{item.sebenarKadarPerJam}/hr
+                      {t.variance.stdHrs} {item.stdJamPerUnit} · {t.variance.actHrs} {item.sebenarJamJumlah} · {t.variance.stdRate} {config.currency}{item.stdKadarPerJam}{t.variance.perHr} · {t.variance.actRate} {config.currency}{item.sebenarKadarPerJam}{t.variance.perHr}
                     </div>
                   </td>
                   <td className="py-4 px-4 text-center font-mono">
@@ -550,19 +550,19 @@ export default function VarianceSheet({
               </div>
               
               <div className="text-[11px] text-slate-500 font-mono space-y-0.5">
-                <div>Std: {item.stdJamPerUnit}j · {config.currency}{item.stdKadarPerJam}/j</div>
-                <div>Act: {item.sebenarJamJumlah}j · {config.currency}{item.sebenarKadarPerJam}/j</div>
+                <div>{t.actualSheet.stdLabel} {item.stdJamPerUnit}{t.actualSheet.hourSuffix} · {config.currency}{item.stdKadarPerJam}/{t.actualSheet.hourSuffix}</div>
+                <div>{lang === "en" ? "Act:" : "Sebenar:"} {item.sebenarJamJumlah}{t.actualSheet.hourSuffix} · {config.currency}{item.sebenarKadarPerJam}/{t.actualSheet.hourSuffix}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t border-slate-200/60 dark:border-slate-800">
                 <div className="p-2.5 bg-white dark:bg-[#132238] rounded-xl border border-slate-100 dark:border-slate-700/60">
-                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">LRV (Kadar)</span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">{t.variance.lrvLabel}</span>
                   <span className={`text-xs font-mono font-bold tabular-nums whitespace-nowrap ${item.variansKadar > 0 ? "text-rose-600" : "text-emerald-600"}`}>
                     {fDiff(item.variansKadar)}
                   </span>
                 </div>
                 <div className="p-2.5 bg-white dark:bg-[#132238] rounded-xl border border-slate-100 dark:border-slate-700/60">
-                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">LEV (Kecekapan)</span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">{t.variance.levLabel}</span>
                   <span className={`text-xs font-mono font-bold tabular-nums whitespace-nowrap ${item.variansKecekapan > 0 ? "text-rose-600" : "text-emerald-600"}`}>
                     {fDiff(item.variansKecekapan)}
                   </span>

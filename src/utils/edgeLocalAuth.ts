@@ -9,6 +9,7 @@
  */
 
 import { ROLE_DEFINITIONS, UserRole } from "../types";
+import type { Language } from "./i18n";
 
 export interface EdgeAuthUserRecord {
   id: string;
@@ -137,21 +138,27 @@ function toPublicUser(u: EdgeAuthUserRecord) {
 export async function edgeBootstrapAdmin(params: {
   password: string;
   email?: string;
+  lang?: Language;
 }): Promise<{ success: boolean; status: number; user?: ReturnType<typeof toPublicUser>; error?: string }> {
+  const isEn = params.lang !== "ms";
   const users = loadEdgeUsers();
   const hasAdmin = users.some((u) => u.role === "admin" || u.username.toLowerCase() === "admin");
   if (hasAdmin) {
     return {
       success: false,
       status: 409,
-      error: "Akaun Admin telah pun diaktifkan. Sila log masuk menggunakan kata laluan anda.",
+      error: isEn
+        ? "Admin account has already been activated. Please sign in using your password."
+        : "Akaun Admin telah pun diaktifkan. Sila log masuk menggunakan kata laluan anda.",
     };
   }
   if (!params.password || params.password.length < 10) {
     return {
       success: false,
       status: 400,
-      error: "Kata laluan Admin mestilah sekurang-kurangnya 10 aksara.",
+      error: isEn
+        ? "Admin password must be at least 10 characters long."
+        : "Kata laluan Admin mestilah sekurang-kurangnya 10 aksara.",
     };
   }
 
@@ -184,7 +191,9 @@ export async function edgeRegisterManual(params: {
   companyName: string;
   password: string;
   email?: string;
+  lang?: Language;
 }): Promise<{ success: boolean; status: number; user?: ReturnType<typeof toPublicUser>; error?: string }> {
+  const isEn = params.lang !== "ms";
   const cleanUser = params.username.trim();
   const cleanLower = cleanUser.toLowerCase();
   const cleanEmail = params.email?.trim().toLowerCase() || undefined;
@@ -193,21 +202,25 @@ export async function edgeRegisterManual(params: {
     return {
       success: false,
       status: 400,
-      error: "Nama pengguna mestilah 3–64 aksara dan hanya huruf, nombor, titik (.), garis bawah (_), atau sempang (-).",
+      error: isEn
+        ? "Username must be 3–64 characters and contain only letters, numbers, dots (.), underscores (_), or hyphens (-)."
+        : "Nama pengguna mestilah 3–64 aksara dan hanya huruf, nombor, titik (.), garis bawah (_), atau sempang (-).",
     };
   }
   if (cleanLower === "admin" || cleanLower === "afiqhakimi070409" || cleanLower === "developer") {
     return {
       success: false,
       status: 400,
-      error: "Nama pengguna ini terpelihara oleh sistem.",
+      error: isEn ? "This username is reserved by the system." : "Nama pengguna ini terpelihara oleh sistem.",
     };
   }
   if (!params.password || params.password.length < 10) {
     return {
       success: false,
       status: 400,
-      error: "Kata laluan mestilah sekurang-kurangnya 10 aksara demi keselamatan.",
+      error: isEn
+        ? "Password must be at least 10 characters long for security."
+        : "Kata laluan mestilah sekurang-kurangnya 10 aksara demi keselamatan.",
     };
   }
 
@@ -216,7 +229,9 @@ export async function edgeRegisterManual(params: {
     return {
       success: false,
       status: 409,
-      error: "Nama pengguna sudah didaftarkan. Sila pilih nama pengguna lain.",
+      error: isEn
+        ? "Username is already registered. Please choose another username."
+        : "Nama pengguna sudah didaftarkan. Sila pilih nama pengguna lain.",
     };
   }
 
@@ -252,6 +267,7 @@ export async function edgeLoginManual(params: {
   email?: string;
   password: string;
   requestedRole?: string;
+  lang?: Language;
 }): Promise<{
   success: boolean;
   status: number;
@@ -259,6 +275,7 @@ export async function edgeLoginManual(params: {
   user?: ReturnType<typeof toPublicUser>;
   error?: string;
 }> {
+  const isEn = params.lang !== "ms";
   const cleanUser = (params.username || "").trim().toLowerCase();
   const cleanEmail = (params.email || "").trim().toLowerCase();
   const reqRole = (params.requestedRole || "").trim().toLowerCase();
@@ -272,7 +289,9 @@ export async function edgeLoginManual(params: {
       success: false,
       status: 409,
       code: "ADMIN_SETUP_REQUIRED",
-      error: "Akaun Pentadbir Utama (admin) belum diaktifkan lagi. Sila tetapkan kata laluan Admin baharu di bawah.",
+      error: isEn
+        ? "Primary Administrator account (admin) has not been activated yet. Please set a new Admin password below."
+        : "Akaun Pentadbir Utama (admin) belum diaktifkan lagi. Sila tetapkan kata laluan Admin baharu di bawah.",
     };
   }
 
@@ -287,7 +306,7 @@ export async function edgeLoginManual(params: {
       success: false,
       status: 401,
       code: "INVALID_CREDENTIALS",
-      error: "Nama pengguna atau kata laluan tidak betul.",
+      error: isEn ? "Incorrect username or password." : "Nama pengguna atau kata laluan tidak betul.",
     };
   }
 
@@ -298,7 +317,9 @@ export async function edgeLoginManual(params: {
       success: false,
       status: 429,
       code: "LOCKED",
-      error: "Terlalu banyak percubaan log masuk. Sila cuba lagi sebentar.",
+      error: isEn
+        ? "Too many login attempts. Please try again shortly."
+        : "Terlalu banyak percubaan log masuk. Sila cuba lagi sebentar.",
     };
   }
 
@@ -316,8 +337,10 @@ export async function edgeLoginManual(params: {
       code: record.lockedUntil > nowMs ? "LOCKED" : "INVALID_CREDENTIALS",
       error:
         record.lockedUntil > nowMs
-          ? "Terlalu banyak percubaan log masuk. Sila cuba lagi sebentar."
-          : "Nama pengguna atau kata laluan tidak betul.",
+          ? (isEn
+              ? "Too many login attempts. Please try again shortly."
+              : "Terlalu banyak percubaan log masuk. Sila cuba lagi sebentar.")
+          : (isEn ? "Incorrect username or password." : "Nama pengguna atau kata laluan tidak betul."),
     };
   }
 
@@ -326,7 +349,9 @@ export async function edgeLoginManual(params: {
       success: false,
       status: 403,
       code: "DEVELOPER_USE_ALT_D",
-      error: "Akaun pembangun hanya boleh diakses melalui mod pengesahan pembangun (Alt+D).",
+      error: isEn
+        ? "Developer accounts can only be accessed via Developer Authentication mode (Alt+D)."
+        : "Akaun pembangun hanya boleh diakses melalui mod pengesahan pembangun (Alt+D).",
     };
   }
 
@@ -336,7 +361,9 @@ export async function edgeLoginManual(params: {
       success: false,
       status: 403,
       code: "ROLE_MISMATCH",
-      error: `Peranan akaun anda ialah "${record.role}". Sila pilih peranan yang sepadan untuk log masuk.`,
+      error: isEn
+        ? `Your account role is "${record.role}". Please select the matching role to sign in.`
+        : `Peranan akaun anda ialah "${record.role}". Sila pilih peranan yang sepadan untuk log masuk.`,
     };
   }
 
@@ -354,6 +381,7 @@ export async function edgeChangePassword(params: {
   currentPassword: string;
   newPassword?: string;
   newUsername?: string;
+  lang?: Language;
 }): Promise<{
   success: boolean;
   status: number;
@@ -361,6 +389,7 @@ export async function edgeChangePassword(params: {
   user?: ReturnType<typeof toPublicUser>;
   error?: string;
 }> {
+  const isEn = params.lang !== "ms";
   const users = loadEdgeUsers();
   const idx = users.findIndex(
     (u) =>
@@ -373,7 +402,7 @@ export async function edgeChangePassword(params: {
       success: false,
       status: 404,
       code: "NO_MANUAL_PASSWORD_SET",
-      error: "Rekod kelayakan tidak ditemui.",
+      error: isEn ? "Credential record not found." : "Rekod kelayakan tidak ditemui.",
     };
   }
 
@@ -384,7 +413,7 @@ export async function edgeChangePassword(params: {
       success: false,
       status: 401,
       code: "INVALID_CURRENT_PASSWORD",
-      error: "Kata laluan semasa tidak betul.",
+      error: isEn ? "Current password is incorrect." : "Kata laluan semasa tidak betul.",
     };
   }
 
@@ -392,15 +421,30 @@ export async function edgeChangePassword(params: {
   const cleanNewPass = params.newPassword || "";
 
   if (!cleanNewPass && (!cleanNewUser || cleanNewUser.toLowerCase() === record.username.toLowerCase())) {
-    return { success: false, status: 400, code: "NO_CHANGES", error: "Tiada perubahan untuk disimpan." };
+    return {
+      success: false,
+      status: 400,
+      code: "NO_CHANGES",
+      error: isEn ? "No changes to save." : "Tiada perubahan untuk disimpan.",
+    };
   }
 
   if (cleanNewUser && cleanNewUser.toLowerCase() !== record.username.toLowerCase()) {
     if (!/^[a-zA-Z0-9._-]{3,64}$/.test(cleanNewUser)) {
-      return { success: false, status: 400, code: "INVALID_USERNAME", error: "Format nama pengguna tidak sah." };
+      return {
+        success: false,
+        status: 400,
+        code: "INVALID_USERNAME",
+        error: isEn ? "Invalid username format." : "Format nama pengguna tidak sah.",
+      };
     }
     if (users.some((u, i) => i !== idx && u.username.toLowerCase() === cleanNewUser.toLowerCase())) {
-      return { success: false, status: 409, code: "USERNAME_TAKEN", error: "Nama pengguna sudah digunakan." };
+      return {
+        success: false,
+        status: 409,
+        code: "USERNAME_TAKEN",
+        error: isEn ? "Username is already taken." : "Nama pengguna sudah digunakan.",
+      };
     }
     record.username = cleanNewUser;
   }
@@ -411,7 +455,9 @@ export async function edgeChangePassword(params: {
         success: false,
         status: 400,
         code: "INVALID_NEW_PASSWORD",
-        error: "Kata laluan baharu mesti sekurang-kurangnya 8 aksara dan berbeza daripada yang semasa.",
+        error: isEn
+          ? "New password must be at least 8 characters and different from the current password."
+          : "Kata laluan baharu mesti sekurang-kurangnya 8 aksara dan berbeza daripada yang semasa.",
       };
     }
     const { salt, hash } = await hashEdgePassword(cleanNewPass);
@@ -434,6 +480,7 @@ export async function edgeLinkManual(params: {
   email?: string;
   role?: UserRole;
   dbKey?: string;
+  lang?: Language;
 }): Promise<{
   success: boolean;
   status: number;
@@ -441,26 +488,44 @@ export async function edgeLinkManual(params: {
   user?: ReturnType<typeof toPublicUser>;
   error?: string;
 }> {
+  const isEn = params.lang !== "ms";
   const cleanUser = params.username.trim();
   const cleanLower = cleanUser.toLowerCase();
   if (!cleanUser || !/^[a-zA-Z0-9._-]{3,64}$/.test(cleanUser)) {
-    return { success: false, status: 400, code: "INVALID_USERNAME", error: "Format nama pengguna tidak sah." };
+    return {
+      success: false,
+      status: 400,
+      code: "INVALID_USERNAME",
+      error: isEn ? "Invalid username format." : "Format nama pengguna tidak sah.",
+    };
   }
   if (cleanLower === "admin" || cleanLower === "afiqhakimi070409" || cleanLower === "developer") {
-    return { success: false, status: 400, code: "USERNAME_RESERVED", error: "Nama pengguna ini terpelihara oleh sistem." };
+    return {
+      success: false,
+      status: 400,
+      code: "USERNAME_RESERVED",
+      error: isEn ? "This username is reserved by the system." : "Nama pengguna ini terpelihara oleh sistem.",
+    };
   }
   if (!params.password || params.password.length < 8) {
     return {
       success: false,
       status: 400,
       code: "INVALID_NEW_PASSWORD",
-      error: "Kata laluan baharu mesti sekurang-kurangnya 8 aksara.",
+      error: isEn
+        ? "New password must be at least 8 characters."
+        : "Kata laluan baharu mesti sekurang-kurangnya 8 aksara.",
     };
   }
 
   const users = loadEdgeUsers();
   if (users.some((u) => u.id !== params.userId && u.username.toLowerCase() === cleanLower)) {
-    return { success: false, status: 409, code: "USERNAME_TAKEN", error: "Nama pengguna sudah digunakan." };
+    return {
+      success: false,
+      status: 409,
+      code: "USERNAME_TAKEN",
+      error: isEn ? "Username is already taken." : "Nama pengguna sudah digunakan.",
+    };
   }
 
   const { salt, hash } = await hashEdgePassword(params.password);

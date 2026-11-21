@@ -6,6 +6,7 @@
 import type { KonfigurasiSistem, BahanMentah, BuruhLangsung, OverheadBerubah, OverheadTetap, UserRole } from "../types.ts";
 import type { TemplatPerniagaan } from "../data/defaultTemplates.ts";
 import { sanitizeParsedJson } from "./fileUploadSecurity.ts";
+import { tr, getStoredLanguage, type Language } from "./i18n.ts";
 
 export const BACKUP_FORMAT_VERSION = "2.0.0";
 export const BACKUP_SCHEMA_VERSION = "2026.1";
@@ -110,15 +111,17 @@ export function generateBackupFileName(companyName: string): string {
  */
 export function validateBackupContent(
   rawJson: any,
-  existingTemplates: TemplatPerniagaan[] = []
+  existingTemplates: TemplatPerniagaan[] = [],
+  lang?: Language
 ): BackupValidationResult {
+  const effectiveLang: Language = lang || getStoredLanguage();
   const warnings: string[] = [];
 
   if (!rawJson || typeof rawJson !== "object") {
     return {
       valid: false,
-      error: "Kandungan fail tidak sah atau bukan objek JSON yang sah.",
-      warnings: ["Fail kosong atau struktur fail rosak."],
+      error: tr(effectiveLang, "utils.backupInvalidJson"),
+      warnings: [tr(effectiveLang, "utils.backupEmptyWarn")],
     };
   }
   rawJson = sanitizeParsedJson(rawJson);
@@ -127,8 +130,8 @@ export function validateBackupContent(
   if (rawJson.metadata?.app !== "SMARTCOST" && rawJson.app !== "SMARTCOST" && !rawJson.templates && !rawJson.pengekosan_templates) {
     return {
       valid: false,
-      error: "Format fail tidak dikenali. Fail ini bukan sandaran rasmi SMARTCOST.",
-      warnings: ["Tandatangan metadata SMARTCOST tidak ditemui."],
+      error: tr(effectiveLang, "utils.backupUnrecognized"),
+      warnings: [tr(effectiveLang, "utils.backupSigMissing")],
     };
   }
 
@@ -145,8 +148,8 @@ export function validateBackupContent(
   if (templatesToValidate.length === 0) {
     return {
       valid: false,
-      error: "Tiada rekod produk atau templat pengekosan ditemui dalam fail sandaran ini.",
-      warnings: ["Senarai templat produk kosong."],
+      error: tr(effectiveLang, "utils.backupNoTemplates"),
+      warnings: [tr(effectiveLang, "utils.backupEmptyTemplates")],
     };
   }
 
@@ -160,24 +163,24 @@ export function validateBackupContent(
     if (!tpl || typeof tpl !== "object") {
       return {
         valid: false,
-        error: `Produk #${i + 1} tidak mempunyai struktur data objek yang sah.`,
-        warnings: [`Produk #${i + 1} rosak.`],
+        error: tr(effectiveLang, "utils.backupInvalidProduct", { index: i + 1 }),
+        warnings: [tr(effectiveLang, "utils.backupCorruptProduct", { index: i + 1 })],
       };
     }
 
     if (!tpl.id || typeof tpl.id !== "string" || !tpl.id.trim()) {
       return {
         valid: false,
-        error: `Produk #${i + 1} kehilangan pengenal unik (ID). Fail sandaran tidak sah.`,
-        warnings: [`Produk #${i + 1} tidak mempunyai ID unik.`],
+        error: tr(effectiveLang, "utils.backupMissingId", { index: i + 1 }),
+        warnings: [tr(effectiveLang, "utils.backupMissingIdWarn", { index: i + 1 })],
       };
     }
 
     if (!tpl.namaProduk || typeof tpl.namaProduk !== "string" || !tpl.namaProduk.trim()) {
       return {
         valid: false,
-        error: `Produk #${i + 1} (ID: ${tpl.id}) tidak mempunyai nama produk yang sah.`,
-        warnings: [`Produk #${i + 1} tidak mempunyai nama produk.`],
+        error: tr(effectiveLang, "utils.backupMissingName", { index: i + 1, id: tpl.id }),
+        warnings: [tr(effectiveLang, "utils.backupMissingNameWarn", { index: i + 1 })],
       };
     }
 

@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { KonfigurasiSistem, Language } from "../types";
 import { TemplatPerniagaan } from "../data/defaultTemplates";
 import { RingkasanKos } from "../utils/costCalculations";
+import { getTranslation, formatLocalizedNumber, formatUnitLabel } from "../utils/i18n";
 import { 
   Briefcase, 
   Layers, 
@@ -34,8 +35,9 @@ export const PortfolioTaxSheet: React.FC<PortfolioTaxSheetProps> = ({
   systemLang = "en",
 }) => {
   const isEn = systemLang === "en";
+  const t = getTranslation(systemLang);
   const currency = config.currency || "RM";
-  const f = (val: number) => `${currency} ${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const f = (val: number) => `${currency} ${formatLocalizedNumber(val, systemLang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // Malaysian SST & Tax Settings
   const [sstRate, setSstRate] = useState<number>(8);
@@ -70,7 +72,7 @@ export const PortfolioTaxSheet: React.FC<PortfolioTaxSheetProps> = ({
     if (marginPct >= 45 && targetQty >= 800) {
       statusBadge = { label: isEn ? "Top Margin Performer" : "Prestasi Cemerlang", color: "bg-amber-100 text-amber-900 border border-amber-200" };
     } else if (targetQty >= 1000) {
-      statusBadge = { label: isEn ? "High Volume Volume Driver" : "Pemacu Volume Tinggi", color: "bg-emerald-100 text-emerald-900 border border-emerald-200" };
+      statusBadge = { label: isEn ? "High Volume Driver" : "Pemacu Volume Tinggi", color: "bg-emerald-100 text-emerald-900 border border-emerald-200" };
     } else if (marginPct >= 50) {
       statusBadge = { label: isEn ? "High Margin Niche" : "Margin Tinggi", color: "bg-blue-100 text-blue-900 border border-blue-200" };
     } else if (marginPct < 25) {
@@ -79,8 +81,8 @@ export const PortfolioTaxSheet: React.FC<PortfolioTaxSheetProps> = ({
 
     return {
       id: tpl.id,
-      name: tpl.namaProduk || "Product",
-      unit: pConfig.unitProduk || "unit",
+      name: tpl.namaProduk || t.portfolioTax.defaultProduct,
+      unit: formatUnitLabel(pConfig.unitProduk, systemLang),
       price,
       totalVarUnit,
       marginUnit,
@@ -141,7 +143,7 @@ export const PortfolioTaxSheet: React.FC<PortfolioTaxSheetProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider">
             <Briefcase className="w-3.5 h-3.5 text-blue-600" />
-            <span>Strategi Portfolio Korporat & Percukaian Malaysia</span>
+            <span>{t.portfolioTax.title}</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-900 tracking-tight">
             {isEn ? "Portfolio Margins & Tax Optimizer" : "Matriks Portfolio Produk & Pengoptimum Cukai"}
@@ -217,7 +219,7 @@ export const PortfolioTaxSheet: React.FC<PortfolioTaxSheetProps> = ({
                       {item.marginPct.toFixed(1)}%
                     </span>
                   </td>
-                  <td className="py-2.5 px-3 text-right text-slate-600">{item.targetQty} {item.unit}</td>
+                  <td className="py-2.5 px-3 text-right text-slate-600">{formatLocalizedNumber(item.targetQty, systemLang)} {item.unit}</td>
                   <td className="py-2.5 px-3 text-right font-bold text-emerald-800 bg-emerald-50/50">
                     +{f(item.weeklyProfitContribution)}
                   </td>

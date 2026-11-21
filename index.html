@@ -1,16 +1,36 @@
 <!doctype html>
-<html lang="en-US">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SMARTCOST</title>
+    <title>SmartCost — Costing &amp; Managerial Accounting System</title>
     <meta name="description" content="Track standard costs, actuals, and variances with break-even analysis and professional PDF statements for any business." />
-    <meta property="og:title" content="SMARTCOST" />
+    <meta property="og:title" content="SmartCost" />
     <meta property="og:description" content="Track standard costs, actuals, and variances with break-even analysis and professional PDF statements for any business." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var savedTheme = localStorage.getItem('smartcost_theme_preference');
+          var theme = savedTheme === 'dark' ? 'dark' : 'light';
+          if (theme === 'dark') {
+            root.classList.add('dark');
+          } else {
+            root.classList.remove('dark');
+          }
+          root.style.colorScheme = theme;
+
+          var savedLang = localStorage.getItem('pengekosan_language_preference') || localStorage.getItem('pengekosan_language');
+          var lang = savedLang === 'ms' ? 'ms' : 'en';
+          root.lang = lang;
+          document.title = lang === 'ms'
+            ? 'SmartCost — Sistem Pengekosan & Perakaunan Pengurusan'
+            : 'SmartCost — Costing & Managerial Accounting System';
+        } catch (e) {}
+      })();
       // Prevent WebSocket closure errors from becoming unhandled promise rejections
       window.addEventListener('unhandledrejection', function(event) {
         var reason = event.reason;
