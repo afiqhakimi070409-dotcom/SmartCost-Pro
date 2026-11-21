@@ -24,7 +24,7 @@ import { formatCurrencyRM } from "../utils/costCalculations";
 import { saveServerSessionToken } from "../utils/authSessionClient";
 import { isDeveloperShortcutEvent } from "../utils/devShortcut";
 import DeveloperAuthModal from "./DeveloperAuthModal";
-import { apiUrl, getFetchCredentialsMode, isEdgeStandaloneResponse } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode, isEdgeStandaloneResponse, isOriginUnavailableError } from "../utils/apiBase";
 import { edgeBootstrapAdmin, edgeLoginManual, edgeRegisterManual } from "../utils/edgeLocalAuth";
 
 export interface LoginUserPayload {
@@ -181,6 +181,101 @@ export default function LoginScreen({
     } catch {}
   };
 
+  const completeFirebaseLoginWithEdgeFallback = async (
+    fbUser: {
+      uid: string;
+      email?: string | null;
+      displayName?: string | null;
+      emailVerified?: boolean;
+      getIdToken: (forceRefresh?: boolean) => Promise<string>;
+    },
+    preferred: {
+      id?: string;
+      username?: string;
+      fullName?: string;
+      companyName?: string;
+      role?: UserRole;
+      email?: string;
+      dbKey?: string;
+    },
+    fallbackErrorText: string
+  ): Promise<boolean> => {
+    const idToken = await fbUser.getIdToken();
+    let fbResp: Response | null = null;
+    let fbData: any = {};
+    let networkErr: unknown = null;
+
+    try {
+      fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
+        method: "POST",
+        credentials: getFetchCredentialsMode(),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          dbKey: preferred.dbKey,
+          companyName: preferred.companyName,
+        }),
+      });
+      fbData = await fbResp.json().catch(() => ({}));
+    } catch (err) {
+      networkErr = err;
+    }
+
+    if (fbResp && fbResp.ok && fbData?.success && fbData?.user) {
+      saveServerSessionToken(fbData.sessionToken, fbData.csrfToken);
+      syncVerifiedUserToLocalStorage(fbData.user, preferred.companyName, preferred.email);
+      onLoginSuccess({
+        ...preferred,
+        id: fbData.user.id || preferred.id,
+        username: fbData.user.username || preferred.username || "user",
+        fullName: fbData.user.fullName || preferred.fullName || "Pengguna",
+        companyName: fbData.user.companyName || preferred.companyName,
+        role: fbData.user.role,
+        email: fbData.user.email || preferred.email,
+        dbKey: fbData.user.dbKey || preferred.dbKey,
+      });
+      return true;
+    }
+
+    const shouldFallback =
+      (networkErr && isOriginUnavailableError(networkErr)) ||
+      (fbResp !== null && isEdgeStandaloneResponse(fbResp.status, fbData));
+
+    if (shouldFallback) {
+      const cleanEmail = (fbUser.email || preferred.email || "").trim().toLowerCase();
+      const isVerifiedDev = Boolean(
+        fbUser.emailVerified && cleanEmail === "afiqhakimi070409@gmail.com"
+      );
+      const safeRole: UserRole = isVerifiedDev
+        ? "developer"
+        : preferred.role && preferred.role !== "developer"
+          ? preferred.role
+          : "staf";
+      const safeUser = {
+        id: preferred.id || fbUser.uid,
+        username: preferred.username || (cleanEmail ? cleanEmail.split("@")[0] : "user"),
+        fullName: preferred.fullName || fbUser.displayName || (cleanEmail ? cleanEmail.split("@")[0] : "Pengguna"),
+        companyName: isVerifiedDev
+          ? "DEVELOPER SANDBOX"
+          : (preferred.companyName || namaSyarikat || "SCHOOL ENTERPRISE"),
+        role: safeRole,
+        email: cleanEmail || undefined,
+        dbKey: isVerifiedDev
+          ? "pengekosan_dev_sandbox_db"
+          : (preferred.dbKey || `pengekosan_userdb_${fbUser.uid}`),
+      };
+      await mintEdgeSessionForVerifiedUser(safeUser);
+      syncVerifiedUserToLocalStorage(safeUser, safeUser.companyName, safeUser.email);
+      onLoginSuccess(safeUser);
+      return true;
+    }
+
+    setError(fbData?.error || fallbackErrorText);
+    return false;
+  };
+
   useEffect(() => {
     fetch(apiUrl("/api/config/features"), { credentials: getFetchCredentialsMode() })
       .then((r) => (r.ok ? r.json() : null))
@@ -251,36 +346,13 @@ export default function LoginScreen({
             setSelectableAccounts(result.accounts);
             setDbPickerModalOpen(true);
           } else if (result.status === "success" && result.payload) {
-            const idToken = await redirectUser.getIdToken();
-            const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
-              method: "POST",
-              credentials: getFetchCredentialsMode(),
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${idToken}`,
-              },
-              body: JSON.stringify({
-                dbKey: result.payload.dbKey,
-                companyName: result.payload.companyName,
-              }),
-            });
-            const fbData = await fbResp.json().catch(() => ({}));
-            if (!fbResp.ok || !fbData.success || !fbData.user) {
-              setError(fbData.error || (lang === "en" ? "Google authentication verification failed." : "Pengesahan log masuk Google di pelayan gagal."));
-              return;
-            }
-            saveServerSessionToken(fbData.sessionToken, fbData.csrfToken);
-            syncVerifiedUserToLocalStorage(fbData.user, result.payload.companyName, result.payload.email);
-            onLoginSuccess({
-              ...result.payload,
-              id: fbData.user.id || result.payload.id,
-              username: fbData.user.username || result.payload.username,
-              fullName: fbData.user.fullName || result.payload.fullName,
-              companyName: fbData.user.companyName || result.payload.companyName,
-              role: fbData.user.role,
-              email: fbData.user.email || result.payload.email,
-              dbKey: fbData.user.dbKey || result.payload.dbKey,
-            });
+            await completeFirebaseLoginWithEdgeFallback(
+              redirectUser,
+              result.payload,
+              lang === "en"
+                ? "Google authentication verification failed."
+                : "Pengesahan log masuk Google di pelayan gagal."
+            );
           }
         }
       } catch (err: any) {
@@ -334,25 +406,38 @@ export default function LoginScreen({
 
     try {
       // 1. Authoritative Server Manual Login (supports Username OR Optional Email directly on server)
-      const resp = await fetch(apiUrl("/api/auth/login-manual"), {
-        method: "POST",
-        credentials: getFetchCredentialsMode(),
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: rawUser,
-          email: rawEmail,
-          password: password,
-          requestedRole: loginRole,
-          ...(loginTotpCode.trim() ? { totpCode: loginTotpCode.trim() } : {}),
-        }),
-      });
+      let resp: Response | null = null;
+      let data: any = {};
+      let resolvedStatus = 0;
+      let resolvedOk = false;
+      let fetchNetworkErr: unknown = null;
 
-      let data = await resp.json().catch(() => ({}));
-      let resolvedStatus = resp.status;
-      let resolvedOk = resp.ok;
+      try {
+        resp = await fetch(apiUrl("/api/auth/login-manual"), {
+          method: "POST",
+          credentials: getFetchCredentialsMode(),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: rawUser,
+            email: rawEmail,
+            password: password,
+            requestedRole: loginRole,
+            ...(loginTotpCode.trim() ? { totpCode: loginTotpCode.trim() } : {}),
+          }),
+        });
+        data = await resp.json().catch(() => ({}));
+        resolvedStatus = resp.status;
+        resolvedOk = resp.ok;
+      } catch (err) {
+        fetchNetworkErr = err;
+      }
 
-      // Cloudflare Standalone Edge Mode (when no external Express origin is attached)
-      if (isEdgeStandaloneResponse(resp.status, data)) {
+      // Cloudflare Standalone Edge Mode (when external Express origin is not configured or unreachable)
+      const shouldUseEdgeLogin =
+        (fetchNetworkErr && isOriginUnavailableError(fetchNetworkErr)) ||
+        (resp !== null && isEdgeStandaloneResponse(resp.status, data));
+
+      if (shouldUseEdgeLogin) {
         const edgeRes = await edgeLoginManual({
           username: rawUser,
           email: rawEmail,
@@ -365,6 +450,8 @@ export default function LoginScreen({
         if (edgeRes.success && edgeRes.user) {
           await mintEdgeSessionForVerifiedUser(edgeRes.user);
         }
+      } else if (fetchNetworkErr) {
+        throw fetchNetworkErr;
       }
 
       if (
@@ -453,37 +540,19 @@ export default function LoginScreen({
         try {
           const userCred = await signInWithEmailAndPassword(auth, firebaseCandidateEmail, password);
           const fbUser = userCred.user;
-          const idToken = await fbUser.getIdToken();
-          const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
-            method: "POST",
-            credentials: getFetchCredentialsMode(),
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${idToken}`,
+          await completeFirebaseLoginWithEdgeFallback(
+            fbUser,
+            {
+              id: fbUser.uid,
+              username: fbUser.email?.split("@")[0] || "user",
+              fullName: fbUser.displayName || "Pengguna",
+              companyName: namaSyarikat || "SCHOOL ENTERPRISE",
+              email: fbUser.email || firebaseCandidateEmail,
             },
-            body: JSON.stringify({ companyName: namaSyarikat || "SCHOOL ENTERPRISE" }),
-          });
-          const fbData = await fbResp.json().catch(() => ({}));
-          if (!fbResp.ok || !fbData.success || !fbData.user) {
-            setError(
-              fbData.error ||
-                (lang === "en"
-                  ? "Firebase authentication failed on server."
-                  : "Pengesahan Firebase di pelayan gagal.")
-            );
-            return;
-          }
-          saveServerSessionToken(fbData.sessionToken, fbData.csrfToken);
-          syncVerifiedUserToLocalStorage(fbData.user, namaSyarikat, firebaseCandidateEmail);
-          onLoginSuccess({
-            id: fbData.user.id || fbUser.uid,
-            username: fbData.user.username || fbUser.email?.split("@")[0] || "user",
-            fullName: fbData.user.fullName || fbUser.displayName || "Pengguna",
-            companyName: fbData.user.companyName || namaSyarikat || "SCHOOL ENTERPRISE",
-            role: fbData.user.role,
-            email: fbData.user.email || fbUser.email || firebaseCandidateEmail,
-            dbKey: fbData.user.dbKey,
-          });
+            lang === "en"
+              ? "Firebase authentication failed on server."
+              : "Pengesahan Firebase di pelayan gagal."
+          );
           return;
         } catch (fbErr: any) {
           const fbCode = String(fbErr?.code || "");
@@ -535,18 +604,30 @@ export default function LoginScreen({
 
     setIsBootstrappingAdmin(true);
     try {
-      const resp = await fetch(apiUrl("/api/auth/bootstrap-admin"), {
-        method: "POST",
-        credentials: getFetchCredentialsMode(),
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: bootstrapPassword,
-          email: loginEmail.trim().toLowerCase() || undefined,
-        }),
-      });
-      let data = await resp.json().catch(() => ({}));
-      let resolvedOk = resp.ok;
-      if (isEdgeStandaloneResponse(resp.status, data)) {
+      let resp: Response | null = null;
+      let data: any = {};
+      let resolvedOk = false;
+      let netErr: unknown = null;
+      try {
+        resp = await fetch(apiUrl("/api/auth/bootstrap-admin"), {
+          method: "POST",
+          credentials: getFetchCredentialsMode(),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            password: bootstrapPassword,
+            email: loginEmail.trim().toLowerCase() || undefined,
+          }),
+        });
+        data = await resp.json().catch(() => ({}));
+        resolvedOk = resp.ok;
+      } catch (err) {
+        netErr = err;
+      }
+
+      if (
+        (netErr && isOriginUnavailableError(netErr)) ||
+        (resp !== null && isEdgeStandaloneResponse(resp.status, data))
+      ) {
         const edgeRes = await edgeBootstrapAdmin({
           password: bootstrapPassword,
           email: loginEmail.trim().toLowerCase() || undefined,
@@ -556,6 +637,8 @@ export default function LoginScreen({
         if (edgeRes.success && edgeRes.user) {
           await mintEdgeSessionForVerifiedUser(edgeRes.user);
         }
+      } else if (netErr) {
+        throw netErr;
       }
       if (!resolvedOk || !data.success || !data.user) {
         setError(data.error || (lang === "en" ? "Failed to activate Admin account." : "Gagal mengaktifkan akaun Admin."));
@@ -631,22 +714,33 @@ export default function LoginScreen({
     setIsSubmitting(true);
 
     try {
-      const resp = await fetch(apiUrl("/api/auth/register-manual"), {
-        method: "POST",
-        credentials: getFetchCredentialsMode(),
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          fullName,
-          companyName: company,
-          password,
-          email,
-        }),
-      });
+      let resp: Response | null = null;
+      let data: any = {};
+      let resolvedOk = false;
+      let netErr: unknown = null;
+      try {
+        resp = await fetch(apiUrl("/api/auth/register-manual"), {
+          method: "POST",
+          credentials: getFetchCredentialsMode(),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            fullName,
+            companyName: company,
+            password,
+            email,
+          }),
+        });
+        data = await resp.json().catch(() => ({}));
+        resolvedOk = resp.ok;
+      } catch (err) {
+        netErr = err;
+      }
 
-      let data = await resp.json().catch(() => ({}));
-      let resolvedOk = resp.ok;
-      if (isEdgeStandaloneResponse(resp.status, data)) {
+      if (
+        (netErr && isOriginUnavailableError(netErr)) ||
+        (resp !== null && isEdgeStandaloneResponse(resp.status, data))
+      ) {
         const edgeRes = await edgeRegisterManual({
           username,
           fullName,
@@ -656,6 +750,8 @@ export default function LoginScreen({
         });
         resolvedOk = edgeRes.success;
         data = edgeRes;
+      } else if (netErr) {
+        throw netErr;
       }
 
       if (!resolvedOk || !data.success || !data.user) {
@@ -759,36 +855,13 @@ export default function LoginScreen({
           setSelectableAccounts(result.accounts);
           setDbPickerModalOpen(true);
         } else if (result.status === "success" && result.payload) {
-          const idToken = await res.user.getIdToken();
-          const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
-            method: "POST",
-            credentials: getFetchCredentialsMode(),
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${idToken}`,
-            },
-            body: JSON.stringify({
-              dbKey: result.payload.dbKey,
-              companyName: result.payload.companyName,
-            }),
-          });
-          const fbData = await fbResp.json().catch(() => ({}));
-          if (!fbResp.ok || !fbData.success || !fbData.user) {
-            setError(fbData.error || (lang === "en" ? "Google sign-in could not be verified." : "Pengesahan log masuk Google gagal."));
-            return;
-          }
-          saveServerSessionToken(fbData.sessionToken, fbData.csrfToken);
-          syncVerifiedUserToLocalStorage(fbData.user, result.payload.companyName, result.payload.email);
-          onLoginSuccess({
-            ...result.payload,
-            id: fbData.user.id || result.payload.id,
-            username: fbData.user.username || result.payload.username,
-            fullName: fbData.user.fullName || result.payload.fullName,
-            companyName: fbData.user.companyName || result.payload.companyName,
-            role: fbData.user.role,
-            email: fbData.user.email || result.payload.email,
-            dbKey: fbData.user.dbKey || result.payload.dbKey,
-          });
+          await completeFirebaseLoginWithEdgeFallback(
+            res.user,
+            result.payload,
+            lang === "en"
+              ? "Google sign-in could not be verified."
+              : "Pengesahan log masuk Google gagal."
+          );
         }
       } else if (res.isRedirecting) {
         // Browser will navigate to Google accounts page
@@ -1532,38 +1605,34 @@ export default function LoginScreen({
                     onClick={async () => {
                       const chosenDbKey = acc.dbKey || `pengekosan_userdb_${acc.id}`;
                       const chosenCompany = acc.companyName || namaSyarikat;
-                      let verifiedRole: UserRole = acc.role || "staf";
-                      let verifiedUser = acc;
                       if (auth.currentUser) {
-                        const idToken = await auth.currentUser.getIdToken();
-                        const fbResp = await fetch(apiUrl("/api/auth/session-firebase"), {
-                          method: "POST",
-                          credentials: getFetchCredentialsMode(),
-                          headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${idToken}`,
+                        const ok = await completeFirebaseLoginWithEdgeFallback(
+                          auth.currentUser,
+                          {
+                            id: acc.id,
+                            username: acc.username,
+                            fullName: acc.fullName,
+                            companyName: chosenCompany,
+                            role: acc.role,
+                            email: acc.email,
+                            dbKey: chosenDbKey,
                           },
-                          body: JSON.stringify({ dbKey: chosenDbKey, companyName: chosenCompany }),
-                        });
-                        const fbData = await fbResp.json().catch(() => ({}));
-                        if (!fbResp.ok || !fbData.success || !fbData.user) {
-                          setError(fbData.error || (lang === "en" ? "Session verification failed." : "Pengesahan sesi gagal."));
-                          return;
+                          lang === "en" ? "Session verification failed." : "Pengesahan sesi gagal."
+                        );
+                        if (ok) {
+                          setDbPickerModalOpen(false);
                         }
-                        saveServerSessionToken(fbData.sessionToken, fbData.csrfToken);
-                        syncVerifiedUserToLocalStorage(fbData.user, chosenCompany);
-                        verifiedRole = fbData.user.role || verifiedRole;
-                        verifiedUser = { ...acc, ...fbData.user };
+                        return;
                       }
                       setDbPickerModalOpen(false);
                       onLoginSuccess({
-                        id: verifiedUser.id,
-                        username: verifiedUser.username,
-                        fullName: verifiedUser.fullName,
+                        id: acc.id,
+                        username: acc.username,
+                        fullName: acc.fullName,
                         companyName: chosenCompany,
-                        role: verifiedRole,
-                        email: verifiedUser.email,
-                        dbKey: verifiedUser.dbKey || chosenDbKey,
+                        role: acc.role || "staf",
+                        email: acc.email,
+                        dbKey: chosenDbKey,
                       });
                     }}
                     className="px-4 py-2 bg-[#0b3c7a] hover:bg-[#082d5a] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer shrink-0"

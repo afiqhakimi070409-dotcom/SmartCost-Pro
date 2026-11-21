@@ -75,7 +75,7 @@ import { PermissionDenied } from "./UIStates";
 import { getAuthFetchHeaders, saveServerSessionToken } from "../utils/authSessionClient";
 import { auth } from "../firebase";
 import { syncUserProfileToFirestore } from "../utils/firestoreSync";
-import { apiUrl, getFetchCredentialsMode, isEdgeStandaloneResponse } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode, isEdgeStandaloneResponse, isOriginUnavailableError } from "../utils/apiBase";
 import { edgeChangePassword, edgeLinkManual } from "../utils/edgeLocalAuth";
 import { validateAndReadImageFile } from "../utils/fileUploadSecurity";
 import { sanitizeConfigForBackup } from "../utils/adminBackup";
@@ -507,22 +507,35 @@ export default function SettingsSheet({
     setIsSavingCredentials(true);
     try {
       const headers = await getAuthFetchHeaders({ "Content-Type": "application/json" });
-      let resp = await fetch(apiUrl("/api/auth/change-password"), {
-        method: "POST",
-        credentials: getFetchCredentialsMode(),
-        headers,
-        body: JSON.stringify({
-          userId: currentUser?.id,
-          currentPassword: currentPasswordInput,
-          newPassword,
-          newUsername,
-        }),
-      });
-      let data = await resp.json().catch(() => ({}));
-      let resolvedOk = resp.ok;
-      let resolvedStatus = resp.status;
+      let resp: Response | null = null;
+      let data: any = {};
+      let resolvedOk = false;
+      let resolvedStatus = 0;
+      let netErr: unknown = null;
 
-      if (isEdgeStandaloneResponse(resp.status, data)) {
+      try {
+        resp = await fetch(apiUrl("/api/auth/change-password"), {
+          method: "POST",
+          credentials: getFetchCredentialsMode(),
+          headers,
+          body: JSON.stringify({
+            userId: currentUser?.id,
+            currentPassword: currentPasswordInput,
+            newPassword,
+            newUsername,
+          }),
+        });
+        data = await resp.json().catch(() => ({}));
+        resolvedOk = resp.ok;
+        resolvedStatus = resp.status;
+      } catch (err) {
+        netErr = err;
+      }
+
+      if (
+        (netErr && isOriginUnavailableError(netErr)) ||
+        (resp !== null && isEdgeStandaloneResponse(resp.status, data))
+      ) {
         let edgeRes = await edgeChangePassword({
           userId: currentUser?.id,
           username: currentUser?.username || localConfig.usernameLogMasuk,
@@ -545,7 +558,9 @@ export default function SettingsSheet({
         resolvedOk = edgeRes.success;
         resolvedStatus = edgeRes.status;
         data = edgeRes;
-      } else if (!resp.ok && data?.code === "NO_MANUAL_PASSWORD_SET") {
+      } else if (netErr) {
+        throw netErr;
+      } else if (resp && !resp.ok && data?.code === "NO_MANUAL_PASSWORD_SET") {
         if (!newPassword || newPassword.length < 8) {
           setSaveError(
             currentLang === "en"

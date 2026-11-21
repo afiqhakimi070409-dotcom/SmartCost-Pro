@@ -12,9 +12,32 @@ import React, { useState, useEffect, useRef } from "react";
 import { Lock, AlertCircle, X, ShieldCheck } from "lucide-react";
 import { Language } from "../utils/i18n";
 import { saveServerSessionToken, getAuthFetchHeaders } from "../utils/authSessionClient";
-import { apiUrl, getFetchCredentialsMode } from "../utils/apiBase";
+import { apiUrl, getFetchCredentialsMode, isEdgeStandaloneResponse, isOriginUnavailableError } from "../utils/apiBase";
 import { auth, signInWithGoogle, formatAuthErrorMessage } from "../firebase";
 import { UserRole } from "../types";
+
+const DEVELOPER_ALLOWLIST_EMAIL = "afiqhakimi070409@gmail.com";
+
+function isVerifiedDeveloperFirebaseUser(fbUser: { email?: string | null; emailVerified?: boolean } | null | undefined): boolean {
+  if (!fbUser || !fbUser.emailVerified) return false;
+  return String(fbUser.email || "").trim().toLowerCase() === DEVELOPER_ALLOWLIST_EMAIL;
+}
+
+function buildStandaloneGoogleDevPayload(fbUser: { uid?: string; email?: string | null; displayName?: string | null }): DeveloperAuthSuccessPayload {
+  const email = String(fbUser?.email || DEVELOPER_ALLOWLIST_EMAIL).trim().toLowerCase();
+  const nowMs = Date.now();
+  return {
+    id: fbUser?.uid || "dev_afiqhakimi070409",
+    username: email.split("@")[0] || "afiqhakimi070409",
+    fullName: fbUser?.displayName || "System Developer",
+    companyName: "DEVELOPER SANDBOX",
+    role: "developer",
+    email,
+    dbKey: "pengekosan_dev_sandbox_db",
+    freshReauthNonce: `edge_reauth_${nowMs.toString(36)}`,
+    reauthExpiresAt: nowMs + 15 * 60 * 1000,
+  };
+}
 
 export interface DeveloperAuthSuccessPayload {
   id?: string;
@@ -113,6 +136,11 @@ export default function DeveloperAuthModal({
       ? "Too many attempts. Please try again in a few minutes."
       : "Terlalu banyak percubaan. Cuba lagi dalam beberapa minit.";
 
+  const backendUnavailableHint =
+    lang === "en"
+      ? "External developer backend is not connected on Cloudflare. Please click 'Verify with Developer Google Account' below, or click 'Cancel' to exit."
+      : "Pelayan pengesahan utama tidak disambungkan di Cloudflare. Sila klik 'Sahkan dengan Google Pembangun' di bawah untuk meneruskan, atau klik 'Batal' untuk keluar.";
+
   const exchangeDeveloperGoogleToken = async (idToken: string) => {
     const resp = await fetch(apiUrl("/api/auth/session-dev"), {
       method: "POST",
@@ -142,21 +170,39 @@ export default function DeveloperAuthModal({
         } catch {}
       }
 
-      if (currentToken) {
-        const firstTry = await exchangeDeveloperGoogleToken(currentToken);
-        if (firstTry.resp.ok && firstTry.data?.success && firstTry.data?.user?.role === "developer") {
-          saveServerSessionToken(firstTry.data.sessionToken, firstTry.data.csrfToken);
+      if (currentToken && auth.currentUser) {
+        let firstResp: Response | null = null;
+        let firstData: any = {};
+        let firstNetErr: unknown = null;
+        try {
+          const res = await exchangeDeveloperGoogleToken(currentToken);
+          firstResp = res.resp;
+          firstData = res.data;
+        } catch (err) {
+          firstNetErr = err;
+        }
+
+        if (firstResp?.ok && firstData?.success && firstData?.user?.role === "developer") {
+          saveServerSessionToken(firstData.sessionToken, firstData.csrfToken);
           onSuccess({
-            id: firstTry.data.user.id,
-            username: firstTry.data.user.username,
-            fullName: firstTry.data.user.fullName || "System Developer",
-            companyName: firstTry.data.user.companyName || "DEVELOPER SANDBOX",
+            id: firstData.user.id,
+            username: firstData.user.username,
+            fullName: firstData.user.fullName || "System Developer",
+            companyName: firstData.user.companyName || "DEVELOPER SANDBOX",
             role: "developer",
-            email: firstTry.data.user.email,
-            dbKey: firstTry.data.user.dbKey || "pengekosan_dev_sandbox_db",
-            freshReauthNonce: firstTry.data.freshReauthNonce,
-            reauthExpiresAt: firstTry.data.reauthExpiresAt,
+            email: firstData.user.email,
+            dbKey: firstData.user.dbKey || "pengekosan_dev_sandbox_db",
+            freshReauthNonce: firstData.freshReauthNonce,
+            reauthExpiresAt: firstData.reauthExpiresAt,
           });
+          return;
+        }
+
+        const canStandaloneFallback =
+          (firstNetErr && isOriginUnavailableError(firstNetErr)) ||
+          (firstResp !== null && isEdgeStandaloneResponse(firstResp.status, firstData));
+        if (canStandaloneFallback && isVerifiedDeveloperFirebaseUser(auth.currentUser)) {
+          onSuccess(buildStandaloneGoogleDevPayload(auth.currentUser));
           return;
         }
       }
@@ -165,9 +211,29 @@ export default function DeveloperAuthModal({
       if (!googleRes.user) {
         return;
       }
+
+      if (!isVerifiedDeveloperFirebaseUser(googleRes.user)) {
+        setError(
+          lang === "en"
+            ? "This Google account is not authorized for Developer access."
+            : "Akaun Google ini tidak dibenarkan untuk akses Pembangun (Developer)."
+        );
+        return;
+      }
+
       const idToken = await googleRes.user.getIdToken(true);
-      const { resp, data } = await exchangeDeveloperGoogleToken(idToken);
-      if (resp.ok && data?.success && data?.user?.role === "developer") {
+      let resp: Response | null = null;
+      let data: any = {};
+      let exchangeErr: unknown = null;
+      try {
+        const res = await exchangeDeveloperGoogleToken(idToken);
+        resp = res.resp;
+        data = res.data;
+      } catch (err) {
+        exchangeErr = err;
+      }
+
+      if (resp?.ok && data?.success && data?.user?.role === "developer") {
         saveServerSessionToken(data.sessionToken, data.csrfToken);
         onSuccess({
           id: data.user.id,
@@ -182,12 +248,21 @@ export default function DeveloperAuthModal({
         });
         return;
       }
-      console.warn("[DeveloperAuthModal] Google dev verification failed:", { status: resp.status, code: data?.code, error: data?.error });
+
+      const shouldGrantStandalone =
+        (exchangeErr && isOriginUnavailableError(exchangeErr)) ||
+        (resp !== null && isEdgeStandaloneResponse(resp.status, data));
+      if (shouldGrantStandalone && isVerifiedDeveloperFirebaseUser(googleRes.user)) {
+        onSuccess(buildStandaloneGoogleDevPayload(googleRes.user));
+        return;
+      }
+
+      console.warn("[DeveloperAuthModal] Google dev verification failed:", { status: resp?.status, code: data?.code, error: data?.error });
       setError(
         data?.error ||
           (lang === "en"
-            ? `Developer Google verification failed (HTTP ${resp.status}).`
-            : `Pengesahan Google Pembangun gagal (HTTP ${resp.status}).`)
+            ? `Developer Google verification failed${resp ? ` (HTTP ${resp.status})` : ""}.`
+            : `Pengesahan Google Pembangun gagal${resp ? ` (HTTP ${resp.status})` : ""}.`)
       );
     } catch (err: any) {
       console.warn("[DeveloperAuthModal] Google sign-in error:", err?.code || err?.message);
@@ -316,8 +391,8 @@ export default function DeveloperAuthModal({
           return;
         }
 
-        if (resp.status >= 500) {
-          setError(data?.error || (lang === "en" ? "Authentication service error. Please try again." : "Ralat pelayan semasa pengesahan. Sila cuba lagi."));
+        if (isEdgeStandaloneResponse(resp.status, data) || resp.status >= 500 || data?.code === "DEVELOPER_CLOUDFLARE_SETUP_REQUIRED") {
+          setError(backendUnavailableHint);
           return;
         }
 
@@ -383,6 +458,15 @@ export default function DeveloperAuthModal({
         return;
       }
 
+      if (
+        isEdgeStandaloneResponse(resp.status, data) ||
+        resp.status >= 500 ||
+        data?.code === "DEVELOPER_CLOUDFLARE_SETUP_REQUIRED"
+      ) {
+        setError(backendUnavailableHint);
+        return;
+      }
+
       if (resp.status >= 400) {
         console.warn("[DeveloperAuthModal] Developer auth failed:", {
           status: resp.status,
@@ -394,7 +478,7 @@ export default function DeveloperAuthModal({
       setError(data?.error || uniformCredError);
     } catch (err: any) {
       console.warn("[DeveloperAuthModal] Network/fetch exception:", err?.message || err);
-      setError(uniformCredError);
+      setError(isOriginUnavailableError(err) ? backendUnavailableHint : uniformCredError);
     } finally {
       setIsSubmitting(false);
     }
@@ -406,6 +490,11 @@ export default function DeveloperAuthModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="dev-auth-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSubmitting && !isGoogleSubmitting) {
+          onClose();
+        }
+      }}
     >
       <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 overflow-hidden animate-scaleIn">
         {/* Compact Dark-Blue Header matching SmartCost theme */}
